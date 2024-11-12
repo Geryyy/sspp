@@ -48,15 +48,12 @@ int main(int argc, char** argv) {
 
     constexpr int dof = 3;
     using SSPP = sspp::SSPP<dof>;
-    SSPP path_planner;
+    SSPP path_planner(m, d);
     using Point = SSPP::Point;
     auto err_code = path_planner.initialize(Point::Zero(), Point::Ones(), 10);
     std::cout << "Error code: " << err_code << std::endl;
 
-//    for(int i = 0; i < 10; i++) {
-//        Point p = path_planner.evaluate(static_cast<double>(i)/9.);
-//        std::cout << "Point " << i << ": " << p.transpose() << std::endl;
-//    }
+
 //
 //    exec_timer.tic();
 //    auto sampled_spline = path_planner.sample(0.1, Point::Ones());
@@ -68,9 +65,14 @@ int main(int argc, char** argv) {
 //    std::cout << "Collision detected: " << collision_detected << std::endl;
 
     exec_timer.tic();
-    auto success = path_planner.plan(Point::Zero(), Point::Ones(), 0.1, Point::Ones(), m, d);
+    auto success = path_planner.plan(Point::Zero(), Point::Ones(), 0.5, Point::Ones());
     std::cout << "Planning time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
     std::cout << "Path found: " << success << std::endl;
+
+    for(int i = 0; i < 10; i++) {
+        Point p = path_planner.evaluate(static_cast<double>(i)/9.);
+        std::cout << "Point " << i << ": " << p.transpose() << std::endl;
+    }
 
     return 0;
 }
