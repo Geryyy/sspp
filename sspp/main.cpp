@@ -28,12 +28,12 @@ int main(int argc, char** argv) {
 
     std::cout << "DoFs: " << m->nq << std::endl;
 
-    exec_timer.tic();
-    for(int i = 0; i < 100000; i++) {
-        mj_step(m, d);
-//        mj_collision(m, d);
-    }
-    std::cout << "Execution time: " << static_cast<double>(exec_timer.toc())*1e-3/100000. << " us" << std::endl;
+//    exec_timer.tic();
+//    for(int i = 0; i < 100000; i++) {
+//        mj_step(m, d);
+////        mj_collision(m, d);
+//    }
+//    std::cout << "Execution time: " << static_cast<double>(exec_timer.toc())*1e-3/100000. << " us" << std::endl;
 
     mj_forward(m, d);
     mj_collision(m,d);
@@ -47,23 +47,12 @@ int main(int argc, char** argv) {
     }
 
     constexpr int dof = 3;
-    using SSPP = sspp::SSPP<dof>;
-    SSPP path_planner(m, d);
-    using Point = SSPP::Point;
-    SSPP::Spline_t init_spline;
-    auto err_code = path_planner.initialize(Point::Zero(), Point::Ones(), init_spline, 10);
+    using SPP = sspp::SamplingPathPlanner<dof>;
+    SPP path_planner(m, d);
+    using Point = SPP::Point;
+    SPP::Spline init_spline;
+    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), init_spline, 10);
     std::cout << "Error code: " << err_code << std::endl;
-
-
-//
-//    exec_timer.tic();
-//    auto sampled_spline = path_planner.sample(0.1, Point::Ones());
-//    std::cout << "Sampling time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
-//
-//    exec_timer.tic();
-//    auto collision_detected = path_planner.check_collision(sampled_spline, m, d);
-//    std::cout << "Collision checking time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
-//    std::cout << "Collision detected: " << collision_detected << std::endl;
 
     exec_timer.tic();
     auto success = path_planner.plan(Point::Zero(), Point::Ones(), 0.5, Point::Ones());

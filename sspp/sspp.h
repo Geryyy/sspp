@@ -2,221 +2,185 @@
 // Created by geraldebmer on 11.11.24.
 //
 
-#ifndef SSPP_SSPP_H
-#define SSPP_SSPP_H
+#ifndef spp_SAMPLING_PATH_PLANNER_H
+#define spp_SAMPLING_PATH_PLANNER_H
 
 #include <vector>
 #include <Eigen/Core>
 #include <unsupported/Eigen/Splines>
 #include <iostream>
 #include <random>
-#include <omp.h>  // OpenMP header
+#include <omp.h>
 #include "mujoco/mujoco.h"
-
 #include "Timer.h"
 
 namespace sspp {
 
-#include <omp.h>  // For OpenMP
+template<int kDOF>
+class SamplingPathPlanner {
+public:
+    using Point = Eigen::Matrix<double, kDOF, 1>;
+    static constexpr int kSplineDegree = 3;
+    using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
 
-    template<int DOF>
-    class SSPP {
-    public:
-        using Point = Eigen::Matrix<double, DOF, 1>;
-        static const int spline_deg = 3;
-        typedef Eigen::Spline<double, DOF, spline_deg> Spline_t;
+private:
+    using SplineFitter = Eigen::SplineFitting<Spline>;
+    
+    Spline path_spline_;
+    mjModel* model_;
+    std::vector<mjData*> data_copies_;
+    std::default_random_engine generator_;
 
-    private:
-        typedef Eigen::SplineFitting<Spline_t> SplineFitting_t;
+public:
+    SamplingPathPlanner(mjModel* model, mjData* data)
+        : model_(model) {
+        initializeDataCopies(data);
+    }
 
-        // Spline_t init_spline;
-        Spline_t path_spline;
-        mjModel* m;
-        std::vector<mjData*> d_copies;
+    ~SamplingPathPlanner() {
+        for (auto& data_copy : data_copies_) {
+            mj_deleteData(data_copy);
+        }
+    }
 
-    public:
-        SSPP(mjModel* m, mjData* d) : m(m) {
-            int max_threads = omp_get_max_threads();
-            d_copies.resize(max_threads, nullptr);
-            for (auto& d_copy : d_copies) {
-                d_copy = mj_copyData(nullptr, m, d);  // Initialize data copies once in the constructor
+    bool initializePath(const Point& start, const Point& end, Spline& init_spline, int num_points = 10) {
+        Eigen::VectorXd u_knots(num_points, 1);
+        Eigen::MatrixXd via_points(kDOF, num_points);
+
+        for (int i = 0; i < num_points; ++i) {
+            double t = static_cast<double>(i) / (num_points - 1);
+            Point point = (1 - t) * start + t * end;
+            via_points.col(i) = point;
+            u_knots(i) = t;
+        }
+
+        init_spline = SplineFitter::Interpolate(via_points, kSplineDegree, u_knots);
+        return true;
+    }
+
+    Point evaluate(double u) const {
+        return path_spline_(u);
+    }
+
+    Point evaluate(const Spline& spline, double u) const {
+        return spline(u);
+    }
+
+    Spline sampleWithNoise(const Spline& init_spline, double sigma, const Point& limits, std::default_random_engine& generator) {
+        std::normal_distribution<double> distribution(0.0, sigma);
+        auto control_points = init_spline.ctrls();
+        int p = kSplineDegree;
+
+        // Apply noise to control points except boundaries
+        for (int i = 0; i < control_points.rows(); ++i) {
+            for (int j = p; j < control_points.cols() - p; ++j) {
+                control_points(i, j) += distribution(generator) * limits(i);
             }
         }
 
-        ~SSPP() {
-            for (auto& d_copy : d_copies) {
-                mj_deleteData(d_copy);  // Cleanup data copies in the destructor
+        return Spline(init_spline.knots(), control_points);
+    }
+
+    bool checkCollision(const Spline& spline, int num_samples, mjData* data) const {
+        for (int i = 0; i <= num_samples; ++i) {
+            double u = static_cast<double>(i) / num_samples;
+            Point point = spline(u);
+
+            for (int j = 0; j < kDOF; ++j) {
+                data->qpos[j] = point(j);
+            }
+            mj_forward(model_, data);
+            if (data->ncon > 0) {
+                return true;
             }
         }
+        return false;
+    }
 
-        bool initialize(Point start, Point end, Spline_t& init_spline, int num_pts=10) {
-            Eigen::VectorXd u_knots(num_pts, 1);
-            Eigen::MatrixXd via_points(DOF, num_pts);
+    double computeArcLength(const Spline& spline, int check_points) const {
+        double total_length = 0.0;
 
-            for (int i = 0; i < num_pts; ++i) {
-                double t = static_cast<double>(i) / (num_pts - 1);
-                Point point = (1 - t) * start + t * end;  // Linear interpolation
-                via_points.col(i) = point;
-                u_knots(i) = t;
-            }
+        #pragma omp parallel for reduction(+:total_length)
+        for (int i = 1; i < check_points; ++i) {
+            double u1 = static_cast<double>(i - 1) / (check_points - 1);
+            double u2 = static_cast<double>(i) / (check_points - 1);
 
-            init_spline = SplineFitting_t::Interpolate(via_points, spline_deg, u_knots);
-            return true;
+            Eigen::VectorXd p1 = spline(u1);
+            Eigen::VectorXd p2 = spline(u2);
+
+            total_length += (p2 - p1).norm();
         }
 
-        Point evaluate(double u) {
-            return path_spline(u);
-        }
+        return total_length;
+    }
 
-        Point evaluate(Spline_t spline, double u) {
-            return spline(u);
-        }
+    bool findBestPath(const std::vector<Spline>& successful_paths, Spline& best_spline, int check_points = 10) {
+        double min_cost = std::numeric_limits<double>::infinity();
+        bool found = false;
 
-        Spline_t sample(Spline_t init_spline, double sigma, Point limits) {
-            auto ctrl_pts = init_spline.ctrls();
-            int p = spline_deg;
-
-            std::default_random_engine generator;
-            std::normal_distribution<double> distribution(0.0, sigma);
-
-            // Add noise to the control points
-            for (int i = 0; i < ctrl_pts.rows(); ++i) {
-                for (int j = p; j < ctrl_pts.cols() - p; ++j) {
-                    double noise = distribution(generator);
-                    ctrl_pts(i, j) += noise * limits(i);
+        #pragma omp parallel for
+        for (size_t i = 0; i < successful_paths.size(); ++i) {
+            double cost = computeArcLength(successful_paths[i], check_points);
+            #pragma omp critical
+            {
+                if (cost < min_cost) {
+                    min_cost = cost;
+                    best_spline = successful_paths[i];
+                    found = true;
                 }
             }
-
-            Spline_t sampled_spline(init_spline.knots(), ctrl_pts);
-            return sampled_spline;
         }
 
-        Spline_t sample_with_generator(Spline_t init_spline, double sigma, const Point& limits,
-                                       std::default_random_engine& generator,
-                                       std::normal_distribution<double>& distribution) {
-            auto ctrl_pts = init_spline.ctrls();
-            int p = spline_deg;
+        return found;
+    }
 
-            // Adjust control points with noise
-            for (int i = 0; i < ctrl_pts.rows(); ++i) {
-                for (int j = p; j < ctrl_pts.cols() - p; ++j) {
-                    double noise = distribution(generator);
-                    ctrl_pts(i, j) += noise * limits(i);
+    bool plan(const Point& start, const Point& end, double sigma, const Point& limits,
+              std::vector<Spline>& ret_success_paths, int sample_count = 50,
+              int check_points = 50, int init_points = 10) {
+        
+        Spline init_spline;
+        initializePath(start, end, init_spline, init_points);
+        std::vector<Spline> successful_paths;
+
+        #pragma omp parallel
+        {
+            std::default_random_engine thread_generator(omp_get_thread_num());
+
+            #pragma omp for schedule(dynamic, 1)
+            for (int i = 0; i < sample_count; ++i) {
+                Spline sampled_spline = sampleWithNoise(init_spline, sigma, limits, thread_generator);
+                mjData* thread_data = data_copies_[omp_get_thread_num()];
+
+                if (!checkCollision(sampled_spline, check_points, thread_data)) {
+                    #pragma omp critical
+                    successful_paths.push_back(sampled_spline);
                 }
             }
-
-            // Update sampled_spline with the modified control points
-            Spline_t sampled_spline(init_spline.knots(), ctrl_pts);
-            return sampled_spline;
         }
 
+        std::cout << "Sampled " << sample_count << " splines. Successful paths found: " << successful_paths.size() << std::endl;
 
-        bool check_collision(Spline_t spline, const int num_samples, mjData* d) {
-            for (int i = 0; i <= num_samples; ++i) {
-                double u = static_cast<double>(i) / num_samples;
-                Point point = spline(u);
+        ret_success_paths = successful_paths;
+        return findBestPath(successful_paths, path_spline_, check_points);
+    }
 
-                for (int j = 0; j < DOF; ++j) {
-                    d->qpos[j] = point(j);
-                }
-//                mj_collision(m, d);
-                mj_forward(m, d);
-                if (d->ncon > 0) {
-                    return true;
-                }
-            }
-            return false;
+    bool plan(const Point& start, const Point& end, double sigma, const Point& limits, int sample_count = 50,
+              int check_points = 50, int init_points = 10) {
+        std::vector<Spline> successful_paths;
+        return plan(start, end, sigma, limits, successful_paths, sample_count, check_points, init_points);
+    }
+
+private:
+    void initializeDataCopies(mjData* data) {
+        int max_threads = omp_get_max_threads();
+        data_copies_.resize(max_threads, nullptr);
+
+        for (auto& data_copy : data_copies_) {
+            data_copy = mj_copyData(nullptr, model_, data);
         }
+    }
+};
 
-        // Define the Metric Function (Arc Length) with OpenMP parallelization
-        double metric(const Spline_t& spline, int check_pts) {
-            double total_length = 0.0;
+} // namespace sspp
 
-            // Discretize the spline and sum the distances between consecutive points
-#pragma omp parallel for reduction(+:total_length)
-            for (int i = 1; i < check_pts; ++i) {
-                // Evaluate the spline at two points: u_i and u_(i+1)
-                double u1 = static_cast<double>(i - 1) / (check_pts - 1);
-                double u2 = static_cast<double>(i) / (check_pts - 1);
-
-                Eigen::VectorXd p1 = spline(u1);
-                Eigen::VectorXd p2 = spline(u2);
-
-                // Compute the Euclidean distance between the points
-                double dist = (p2 - p1).norm();
-                total_length += dist;
-            }
-
-            return total_length;  // The arc length is the total distance
-        }
-
-        // Define the eval_cost function to find the spline with the lowest cost using OpenMP
-        bool eval_cost(const std::vector<Spline_t>& successful_paths, Spline_t& result_spline, int check_pts=10) {
-            double min_cost = std::numeric_limits<double>::infinity();
-//            Spline_t best_spline;
-            bool success = false;
-
-            // Use parallel for to compute the cost (arc length) for each spline concurrently
-#pragma omp parallel for
-            for (size_t i = 0; i < successful_paths.size(); ++i) {
-                double cost = metric(successful_paths[i], check_pts);
-
-                // Critical section to update the best spline safely
-#pragma omp critical
-                {
-                    if (cost < min_cost) {
-                        min_cost = cost;
-                        result_spline = successful_paths[i];
-                        success = true;
-                    }
-                }
-            }
-
-            return success;
-        }
-
-
-
-        bool plan(Point start, Point end, double sigma, Point limits,
-                  const size_t sample_count = 50, const size_t check_pts = 50, const size_t init_pts = 10) {
-            Spline_t init_spline;
-            initialize(start, end, init_spline, init_pts);
-
-            std::default_random_engine generator(omp_get_thread_num());  // Seeded by thread ID for unique generators
-            std::normal_distribution<double> distribution(0.0, sigma);
-
-            std::vector<Spline_t> successful_paths;  // Vector to store successful splines
-
-#pragma omp parallel for schedule(dynamic, 1)
-            for (size_t i = 0; i < sample_count; ++i) {
-                auto sampled_spline = sample_with_generator(init_spline, sigma, limits, generator, distribution);
-                int thread_id = omp_get_thread_num();
-                mjData* d_thread = d_copies[thread_id];
-
-                if (!check_collision(sampled_spline, check_pts, d_thread)) {
-                    // Critical section to safely add successful splines to the vector
-#pragma omp critical
-                    {
-                        successful_paths.push_back(sampled_spline);
-                    }
-                }
-            }
-
-            // Print the number of successful paths found
-            std::cout << "Sampled " << sample_count << " splines. Successful paths found: " << successful_paths.size() << std::endl;
-
-            Spline_t result_spline;
-            auto success = eval_cost(successful_paths, result_spline, check_pts);
-
-            if (success) {
-                path_spline = result_spline;
-            }
-
-            return success;
-        }
-    };
-
-
-} // sspp
-
-#endif //SSPP_SSPP_H
+#endif // spp_SAMPLING_PATH_PLANNER_H

@@ -20,7 +20,6 @@ find_package(OpenMP REQUIRED)  # Find OpenMP
 # Add executable
 add_executable(${PROJECT_NAME} main.cpp
         Timer.h
-        sspp.cpp
         sspp.h)
 
 # Link libraries with keyword mode
