@@ -23,13 +23,13 @@ namespace sspp {
     class SSPP {
     public:
         using Point = Eigen::Matrix<double, DOF, 1>;
-
-    private:
         static const int spline_deg = 3;
         typedef Eigen::Spline<double, DOF, spline_deg> Spline_t;
+
+    private:
         typedef Eigen::SplineFitting<Spline_t> SplineFitting_t;
 
-        Spline_t init_spline;
+        // Spline_t init_spline;
         Spline_t path_spline;
         mjModel* m;
         std::vector<mjData*> d_copies;
@@ -49,7 +49,7 @@ namespace sspp {
             }
         }
 
-        int initialize(Point start, Point end, int num_pts) {
+        bool initialize(Point start, Point end, Spline_t& init_spline, int num_pts=10) {
             Eigen::VectorXd u_knots(num_pts, 1);
             Eigen::MatrixXd via_points(DOF, num_pts);
 
@@ -61,7 +61,7 @@ namespace sspp {
             }
 
             init_spline = SplineFitting_t::Interpolate(via_points, spline_deg, u_knots);
-            return 0;
+            return true;
         }
 
         Point evaluate(double u) {
@@ -72,7 +72,7 @@ namespace sspp {
             return spline(u);
         }
 
-        Spline_t sample(double sigma, Point limits) {
+        Spline_t sample(Spline_t init_spline, double sigma, Point limits) {
             auto ctrl_pts = init_spline.ctrls();
             int p = spline_deg;
 
@@ -91,7 +91,7 @@ namespace sspp {
             return sampled_spline;
         }
 
-        Spline_t sample_with_generator(double sigma, const Point& limits,
+        Spline_t sample_with_generator(Spline_t init_spline, double sigma, const Point& limits,
                                        std::default_random_engine& generator,
                                        std::normal_distribution<double>& distribution) {
             auto ctrl_pts = init_spline.ctrls();
@@ -179,8 +179,8 @@ namespace sspp {
 
         bool plan(Point start, Point end, double sigma, Point limits,
                   const size_t sample_count = 50, const size_t check_pts = 50, const size_t init_pts = 10) {
-
-            initialize(start, end, init_pts);
+            Spline_t init_spline;
+            initialize(start, end, init_spline, init_pts);
 
             std::default_random_engine generator(omp_get_thread_num());  // Seeded by thread ID for unique generators
             std::normal_distribution<double> distribution(0.0, sigma);
@@ -189,7 +189,7 @@ namespace sspp {
 
 #pragma omp parallel for schedule(dynamic, 1)
             for (size_t i = 0; i < sample_count; ++i) {
-                auto sampled_spline = sample_with_generator(sigma, limits, generator, distribution);
+                auto sampled_spline = sample_with_generator(init_spline, sigma, limits, generator, distribution);
                 int thread_id = omp_get_thread_num();
                 mjData* d_thread = d_copies[thread_id];
 

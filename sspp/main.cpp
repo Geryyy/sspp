@@ -50,7 +50,8 @@ int main(int argc, char** argv) {
     using SSPP = sspp::SSPP<dof>;
     SSPP path_planner(m, d);
     using Point = SSPP::Point;
-    auto err_code = path_planner.initialize(Point::Zero(), Point::Ones(), 10);
+    SSPP::Spline_t init_spline;
+    auto err_code = path_planner.initialize(Point::Zero(), Point::Ones(), init_spline, 10);
     std::cout << "Error code: " << err_code << std::endl;
 
 
