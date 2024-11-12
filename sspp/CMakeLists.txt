@@ -7,13 +7,22 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(mujoco REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
-
-# Link libraries
-link_libraries(mujoco::mujoco Eigen3::Eigen)
+find_package(OpenMP REQUIRED)  # Find OpenMP
 
 # Add executable
 add_executable(${PROJECT_NAME} main.cpp
         Timer.h
         sspp.cpp
         sspp.h)
-target_link_libraries(${PROJECT_NAME} mujoco::mujoco Threads::Threads Eigen3::Eigen)
+
+# Link libraries with keyword mode
+target_link_libraries(${PROJECT_NAME}
+        PUBLIC mujoco::mujoco
+        PUBLIC Threads::Threads
+        PUBLIC Eigen3::Eigen
+)
+
+# Link OpenMP libraries if available
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
+endif()

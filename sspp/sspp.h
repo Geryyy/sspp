@@ -10,6 +10,10 @@
 #include <unsupported/Eigen/Splines>
 #include <iostream>
 #include <random>
+#include <omp.h>  // OpenMP header
+#include "mujoco/mujoco.h"
+
+#include "Timer.h"
 
 namespace sspp {
 
@@ -23,6 +27,7 @@ namespace sspp {
         typedef Eigen::SplineFitting<Spline_t> SplineFitting_t;
 
         Spline_t init_spline;
+        Spline_t path_spline;
 
     public:
         SSPP() = default;
@@ -44,7 +49,7 @@ namespace sspp {
         }
 
         Point evaluate(double u) {
-            return init_spline(u);
+            return path_spline(u);
         }
 
         Point evaluate(Spline_t spline, double u) {
@@ -72,10 +77,81 @@ namespace sspp {
         }
 
 
-//        bool check_collision(Point p) {
-//            return true;
-//        }
+        bool check_collision(Spline_t spline, const int num_samples, mjModel* m, mjData* d) {
+            for (int i = 0; i <= num_samples; ++i) {
+                double u = static_cast<double>(i) / num_samples;
+                Point point = spline(u);
 
+                for (int j = 0; j < DOF; ++j) {
+                    d->qpos[j] = point(j);
+                }
+                mj_collision(m, d);
+                if (d->ncon > 0) {
+                    // collision detected
+                    return true;
+                }
+            }
+            return false;
+        }
+
+
+        bool plan(Point start, Point end, double sigma, Point limits, mjModel* m, mjData* d) {
+            constexpr int init_pts = 10;
+            constexpr int check_pts = 100;
+            constexpr size_t sample_count = 1000000;
+
+            Timer exec_timer;
+
+            std::cout << "plan path with max openMP threads: " << omp_get_max_threads() << std::endl;
+
+            exec_timer.tic();
+            initialize(start, end, init_pts);
+            std::cout << "Initialization time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
+
+            // Creating separate mjData copies for each thread
+            exec_timer.tic();
+            std::vector<mjData*> d_copies(omp_get_max_threads(), nullptr);
+            for (auto& d_copy : d_copies) {
+                d_copy = mj_copyData(d_copy, m, d);
+            }
+            std::cout << "Data copy time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
+
+            bool success = false;
+            size_t i = 0;
+
+            exec_timer.tic();
+#pragma omp parallel for shared(success, i)
+            for (i = 0; i < sample_count; i++) {
+                if (success) continue;  // Exit other threads if a path is already found
+
+                auto sampled_spline = sample(sigma, limits);
+
+                // Get the thread ID and its specific mjData instance
+                int thread_id = omp_get_thread_num();
+                mjData* d_thread = d_copies[thread_id];
+
+                if (!check_collision(sampled_spline, check_pts, m, d_thread)) {
+#pragma omp critical  // Protect access to path_spline and success
+                    {
+                        if (!success) {
+                            path_spline = sampled_spline;
+                            success = true;
+                        }
+                    }
+                }
+            }
+            std::cout << "Planning time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
+
+            exec_timer.tic();
+            // Cleanup mjData copies
+            for (auto& d_copy : d_copies) {
+                mj_deleteData(d_copy);
+            }
+            std::cout << "Data cleanup time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
+
+            std::cout << "Sampled " << i << " splines. Path found: " << success << std::endl;
+            return success;
+        }
 
 
 
