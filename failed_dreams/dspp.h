@@ -13,7 +13,7 @@
 #include <random>
 #include <omp.h>
 #include "mujoco/mujoco.h"
-#include "Timer.h"
+#include "../Timer.h"
 
 namespace dspp {
 

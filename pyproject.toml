@@ -1,0 +1,11 @@
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+
+[project]
+name = "sspp"  # The name of your package
+version = "0.1"
+description = "SSPP - Sampled Spline Path Planner Bindings for Python"
+authors = [{name = "Gerald Ebmer", email = "gerald.ebmer@tuwien.ac.at"}]
+
