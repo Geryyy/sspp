@@ -37,6 +37,14 @@ public:
         initializeDataCopies(data);
     }
 
+    // work around for python bindings
+    SamplingPathPlanner(void* model_ptr, void* data_ptr) {
+        // Cast void* to mjModel* and mjData*
+        model_ = static_cast<mjModel*>(model_ptr);
+        mjData* data_ = static_cast<mjData*>(data_ptr);
+        initializeDataCopies(data_);
+    }
+
     ~SamplingPathPlanner() {
         for (auto& data_copy : data_copies_) {
             mj_deleteData(data_copy);
