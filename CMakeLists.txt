@@ -1,73 +1,52 @@
 cmake_minimum_required(VERSION 3.25)
 project(sspp)
 
+# Ignore Conda environment
+# set(CMAKE_IGNORE_PATH $ENV{CONDA_PREFIX})
+# message("CMAKE_IGNORE_PATH: ${CMAKE_IGNORE_PATH}")
+
 set(CMAKE_CXX_STANDARD 20)
 
-# Set build type to Release for optimizations
+# Set build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-find_program(LATEST_GCC g++-12)  # Change the version as needed
-if(LATEST_GCC)
-    set(CMAKE_CXX_COMPILER ${LATEST_GCC})
+# Use the desired compiler if not already set
+if(NOT CMAKE_CXX_COMPILER)
+    find_program(LATEST_GCC g++-12)  # Change the version as needed
+    if(LATEST_GCC)
+        set(CMAKE_CXX_COMPILER ${LATEST_GCC} CACHE STRING "Path to the C++ compiler" FORCE)
+    endif()
 endif()
 
-
-# Set the highest optimization level and other relevant flags
+# Optimization flags
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -march=native -funroll-loops -ftree-vectorize")
 
+# Add subdirectories
 add_subdirectory(extern/pybind11)
 
-
-## Set the Python executable using Python's sys module
-#execute_process(
-#        COMMAND python3 -c "import sys; print(sys.executable)"
-#        RESULT_VARIABLE result
-#        OUTPUT_VARIABLE python_executable
-#        ERROR_VARIABLE err
-#        OUTPUT_STRIP_TRAILING_WHITESPACE
-#)
-
-if(result)
-    message(FATAL_ERROR "Failed to find Python executable: ${err}")
-else()
-    message(STATUS "Using Python executable: ${python_executable}")
-    set(PYTHON_EXECUTABLE ${python_executable})
-endif()
-
-
-#find_package(Python 3.8 COMPONENTS Interpreter Development REQUIRED)
-# find_package(pybind11 CONFIG REQUIRED)
-
-# Find packages
+# Find dependencies
 find_package(mujoco REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(OpenMP REQUIRED)  # Find OpenMP
+find_package(OpenMP REQUIRED)
 
 # Add executable
-add_executable(${PROJECT_NAME} main.cpp
-        Timer.h
-        sspp.h)
+add_executable(${PROJECT_NAME} main.cpp Timer.h sspp.h)
 
-# Link libraries with keyword mode
+# Link libraries
 target_link_libraries(${PROJECT_NAME}
-        PUBLIC mujoco::mujoco
-        PUBLIC Threads::Threads
-        PUBLIC Eigen3::Eigen
+    PUBLIC mujoco::mujoco
+    PUBLIC Threads::Threads
+    PUBLIC Eigen3::Eigen
 )
 
-# Link OpenMP libraries if available
 if(OpenMP_CXX_FOUND)
     target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-
-
-#pybind11_add_module(sspp_bindings python_bindings.cpp)
-#target_link_libraries(sspp_bindings PRIVATE mujoco::mujoco Eigen3::Eigen)
-
+# Python bindings
 pybind11_add_module(_sspp python_bindings.cpp)
 target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
