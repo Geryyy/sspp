@@ -33,23 +33,62 @@ def get_pointer(obj):
 
 
 
+import time 
+import mujoco 
+
 def main():
     mj_model, mj_data, xml_path = load()
-   
-    # Initialize the planner with void* pointers
-    # help(mj_model._ptr)
-    # model_capsule = sp.create_model_capsule(id(mj_model))
-    # data_capsule = sp.create_data_capsule(id(mj_data))
+
     planner = sp.SamplingPathPlanner7(xml_path)
-    # planner = sp.SamplingPathPlanner7(mj_model, mj_data)
 
     start = np.zeros((7,1))
     end = np.ones((7,1)) * np.pi/2
     sigma = 0.1
     limits = np.ones((7,1)) * np.pi
+    
+    t_start = time.time()
 
-    success = planner.plan(start,end, sigma, limits)
+    success = planner.plan(start,end, sigma, limits, sample_count = 1000, check_points = 10)
+
+    duration = time.time() - t_start
     print("Success: ", success)
+    print("Duration: ", duration)
+    exit()
+    T_traj = 10
+
+    framerate = 25
+    frame_time = 1.0 / framerate
+    dt = mj_model.opt.timestep 
+
+    with mujoco.viewer.launch_passive(mj_model, mj_data) as viewer:
+        # Close the viewer automatically after 30 wall-seconds.
+        sim_time = 0
+        last_frame_time = time.time()
+        while viewer.is_running():
+            step_start = time.time()
+
+            if sim_time > T_traj:
+                break
+
+            u = min((sim_time) / T_traj, 1)
+            q_act = planner.evaluate(u)
+            print("q_act: ", q_act.T)
+            mj_data.qpos[0:7] = planner.evaluate(u)
+            # print("u: ", u)
+            sim_time += dt
+        
+            
+            mujoco.mj_forward(mj_model, mj_data)
+
+            time_until_next_frame = frame_time - (time.time() - last_frame_time)
+            if time_until_next_frame < 0:
+                last_frame_time = time.time()
+                viewer.sync()
+            
+            # Rudimentary time keeping, will drift relative to wall clock.
+            time_until_next_step = mj_model.opt.timestep - (time.time() - step_start)
+            if time_until_next_step > 0:
+                time.sleep(time_until_next_step)
 
 
 if __name__ == "__main__":
