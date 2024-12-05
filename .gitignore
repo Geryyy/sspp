@@ -39,3 +39,5 @@ cmake-build-release/
 .vscode/
 
 build/
+
+__pycache__/
