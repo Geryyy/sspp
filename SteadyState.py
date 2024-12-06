@@ -86,7 +86,11 @@ class SteadyState:
         pin.updateFramePlacements(self.pin_model, self.pin_data)
 
         oMdes = pin.SE3(Rd, pd.T)
-        iMd = self.pin_data.oMf[self.tool_frame_id].actInv(oMdes)
+        oMact = self.pin_data.oMf[self.tool_frame_id]
+        iMd = oMact.actInv(oMdes)
+
+        print("Rd: ", Rd)
+        print("Ract: ", oMact.rotation)
 
         R_ed = iMd.rotation - np.eye(3)
         frot = 2*(3-np.trace(R_ed))
@@ -104,19 +108,22 @@ class SteadyState:
         cpin.updateFramePlacements(self.cpin_model, self.cpin_data)
 
         oMdes = cpin.SE3(Rd, pd.T)
-        iMd = self.cpin_data.oMf[self.tool_frame_id].actInv(oMdes)
+        oMact = self.cpin_data.oMf[self.tool_frame_id]
+        iMd = oMact.actInv(oMdes)
         
         epos = iMd.translation
         R_ed = iMd.rotation - SX.eye(3)
+        # frot = (dot(oMact.rotation[:,0], Rd[:,0]) - 1)**2
         
         # general orientation error
-        frot = 2*(3-trace(R_ed))
+        # frot = 2*(3-trace(R_ed))
         fpos = dot(epos, epos)
 
         # cost function weights
         fpos *= cost_weight_parameters[0]
-        frot *= cost_weight_parameters[1]
-        f = fpos + frot 
+        # frot *= cost_weight_parameters[1]
+        # f = fpos + frot 
+        f = fpos
 
         # constraints
         g = cpin.computeGeneralizedGravity(self.cpin_model, self.cpin_data, q.T)[7:]        
@@ -134,8 +141,8 @@ class SteadyState:
                 'g' : g,
                 'p' : params}
 
-        ipopt_options = {'tol' : 1e-4,
-                        'max_iter' : 100,
+        ipopt_options = {'tol' : 1e-6,
+                        'max_iter' : 50,
                         'linear_solver' : 'ma57',
                         # 'linear_system_scaling' : 'none',
                         # 'ma57_automatic_scaling' : 'no',
@@ -145,7 +152,7 @@ class SteadyState:
                         # 'expect_infeasible_problem' : 'no',
                         # 'print_info_string' : 'no',
                         # 'fast_step_computation' : 'yes',
-                        'print_level' : 0} # 5
+                        'print_level' : 5} # 5
         nlp_options = {'ipopt' : ipopt_options,
                         'print_time' : 0}
         F = nlpsol('F', 'ipopt', nlp, nlp_options)

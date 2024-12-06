@@ -33,11 +33,64 @@ def get_pointer(obj):
 
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
+def plot_triad(transformations, labels, ax=None, scale=0.1):
+    """
+    Plots triads (x, y, z axes) for a list of homogeneous transformations with labels.
+    
+    Parameters:
+    - transformations: List of homogeneous transformation matrices (4x4 numpy arrays).
+    - labels: List of labels corresponding to the transformations.
+    - ax: (optional) Matplotlib 3D Axes object. Creates a new one if not provided.
+    - scale: Scale of the triad axes (default 0.1).
+    """
+    if ax is None:
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot each transformation
+    for i, (T, label) in enumerate(zip(transformations, labels)):
+        # Origin of the frame
+        origin = T[:3, 3]
+        # Extract rotation matrix (upper 3x3 block)
+        R = T[:3, :3]
+        
+        # Define axes vectors
+        x_axis = origin + scale * R[:, 0]  # X-axis (red)
+        y_axis = origin + scale * R[:, 1]  # Y-axis (green)
+        z_axis = origin + scale * R[:, 2]  # Z-axis (blue)
+        
+        # Plot axes
+        ax.quiver(*origin, *(x_axis - origin), color='r', label='X' if i == 0 else "", linewidth=1)
+        ax.quiver(*origin, *(y_axis - origin), color='g', label='Y' if i == 0 else "", linewidth=1)
+        ax.quiver(*origin, *(z_axis - origin), color='b', label='Z' if i == 0 else "", linewidth=1)
+        
+        # Add label at the origin
+        ax.text(*origin, label, color='k', fontsize=10)
+    
+    # Set axis limits and labels
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
+    ax.set_zlabel("Z")
+    ax.set_xlim([-1, 1])
+    ax.set_ylim([-1, 1])
+    ax.set_zlim([-1, 1])
+    ax.set_box_aspect([1, 1, 1])  # Equal aspect ratio for 3D plot
+    ax.legend()
+    plt.show()
+
+
+
+
 import time 
 import mujoco 
 import pinutil as pu
 import SteadyState as ss
 # import numpy as np
+import pinocchio as pin
 
 def main():
     mj_model, mj_data, xml_path, pin_model, pin_data, env, tool_frame_id = load()
@@ -67,7 +120,7 @@ def main():
     mj_data.qpos[0:9] = qd1
 
     # path end
-    oMdes = pu.create_se3_from_rpy_and_trans(np.array(site2_xpos), np.array([0,0,0]))
+    oMdes = pu.create_se3_from_rpy_and_trans(np.array(site2_xpos), np.array([0,0,np.pi]))
     # q_ik, success = pu.inverse_kinematics_clik(pin_model, pin_data, q_init, joint_id, oMdes)
     print("oMdes2: ", oMdes.homogeneous)
     qd2, success = iksolver.inverse_kinematics(oMdes.homogeneous, qd1)
@@ -78,11 +131,36 @@ def main():
     # if success:
     # mj_data.qpos[0:9] = qd2
 
+    oMorigin = pu.create_se3_from_rpy_and_trans(np.array([0,0,0]), np.array([0,0,0]))
+
+    oMstart = pu.get_frameSE3(pin_model, pin_data, qd1, tool_frame_id)
+    oMend = pu.get_frameSE3(pin_model, pin_data, qd2, tool_frame_id)
+
+    # M_ls = [oMorigin.homogeneous, oMstart.homogeneous, oMend.homogeneous, oMdes.homogeneous]
+    # label_ls = ["origin", "start", "end", "des"]
+
+    M_ls = [oMend.homogeneous, oMdes.homogeneous]
+    label_ls = ["end", "des"]
+
+    # print algebra
+    a_end = pin.log(oMend.rotation)
+    a_des = pin.log(oMdes.rotation)
+    print("a_end: ", a_end)
+    print("a_des: ", a_des)
+
+    print("oMend.translation: ", oMend.translation)
+    print("oMdes.translation: ", oMdes.translation)
+
+    plot_triad(M_ls, label_ls)
+
+    exit()
+
+
 
     planner = sp.SamplingPathPlanner7(xml_path)
 
     start = qd1[0:7]
-    end = qd2[0:7]
+    end = qd2[0:7] #+ np.array([0,0,0,0,0,0,1])
     sigma = 0.08
     limits = np.ones((7,1)) * np.pi
     
