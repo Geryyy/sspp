@@ -37,7 +37,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-def plot_triad(transformations, labels, ax=None, scale=0.1):
+def plot_triad(transformations, labels, ax=None, scale=0.1, block=False):
     """
     Plots triads (x, y, z axes) for a list of homogeneous transformations with labels.
     
@@ -80,7 +80,14 @@ def plot_triad(transformations, labels, ax=None, scale=0.1):
     ax.set_zlim([-1, 1])
     ax.set_box_aspect([1, 1, 1])  # Equal aspect ratio for 3D plot
     ax.legend()
-    plt.show()
+
+    if block:
+        plt.show(block=block)
+        return None
+    else:
+        plt.show(block=False)
+        return fig, ax
+
 
 
 
@@ -108,58 +115,37 @@ def main():
     print("site2_xpos: ", np.array(site2_xpos))
     
     # path start
-    oMdes = pu.create_se3_from_rpy_and_trans(np.array(site1_xpos), np.array([0,0,0]))
+    oMdes1 = pu.create_se3_from_rpy_and_trans(np.array(site1_xpos), np.array([0,0,np.pi]))
     # q_ik, success = pu.inverse_kinematics_clik(pin_model, pin_data, q_init, joint_id, oMdes)
-    print("oMdes1: ", oMdes.homogeneous)
-    qd1, success = iksolver.inverse_kinematics(oMdes.homogeneous, q_init)
+    print("oMdes1: ", oMdes1.homogeneous)
+    qd1, success = iksolver.inverse_kinematics(oMdes1.homogeneous, q_init)
     print("q_ik: ", qd1.T)
     print("success: ", success)
-    frot = iksolver.compute_frot(qd1, oMdes.homogeneous)
+    frot = iksolver.compute_frot(qd1, oMdes1.homogeneous)
     print("frot: ", frot)
     # if success:
     mj_data.qpos[0:9] = qd1
 
     # path end
-    oMdes = pu.create_se3_from_rpy_and_trans(np.array(site2_xpos), np.array([0,0,np.pi]))
+    oMdes2 = pu.create_se3_from_rpy_and_trans(np.array(site2_xpos), np.array([0,0,np.pi]))
     # q_ik, success = pu.inverse_kinematics_clik(pin_model, pin_data, q_init, joint_id, oMdes)
-    print("oMdes2: ", oMdes.homogeneous)
-    qd2, success = iksolver.inverse_kinematics(oMdes.homogeneous, qd1)
+    print("oMdes2: ", oMdes2.homogeneous)
+    qd2, success = iksolver.inverse_kinematics(oMdes2.homogeneous, qd1)
     print("q_ik: ", qd2.T)
     print("success: ", success)
-    frot = iksolver.compute_frot(qd2, oMdes.homogeneous)
+    frot = iksolver.compute_frot(qd2, oMdes2.homogeneous)
     print("frot: ", frot)
-    # if success:
-    # mj_data.qpos[0:9] = qd2
 
     oMorigin = pu.create_se3_from_rpy_and_trans(np.array([0,0,0]), np.array([0,0,0]))
-
     oMstart = pu.get_frameSE3(pin_model, pin_data, qd1, tool_frame_id)
     oMend = pu.get_frameSE3(pin_model, pin_data, qd2, tool_frame_id)
 
-    # M_ls = [oMorigin.homogeneous, oMstart.homogeneous, oMend.homogeneous, oMdes.homogeneous]
-    # label_ls = ["origin", "start", "end", "des"]
+    M_ls = [oMorigin.homogeneous, oMstart.homogeneous, oMend.homogeneous, oMdes1.homogeneous, oMdes2.homogeneous]
+    label_ls = ["origin", "start", "end", "des1", "des2"]
 
-    M_ls = [oMend.homogeneous, oMdes.homogeneous]
-    label_ls = ["end", "des"]
+    plot_triad(M_ls, label_ls, block=True)
 
-    # print algebra
-    a_end = pin.log(oMend.rotation)
-    a_des = pin.log(oMdes.rotation)
-    print("a_end: ", a_end)
-    print("a_des: ", a_des)
-
-    oMd = oMdes.actInv(oMend)
-    a_d = pin.log(oMd.rotation)
-    print("a_d: ", a_d)
-
-    print("oMend.translation: ", oMend.translation)
-    print("oMdes.translation: ", oMdes.translation)
-
-    plot_triad(M_ls, label_ls)
-
-    # exit()
-
-
+   
 
     planner = sp.SamplingPathPlanner7(xml_path)
 
@@ -169,8 +155,9 @@ def main():
     limits = np.ones((7,1)) * np.pi
     
     t_start = time.time()
-
-    success = planner.plan(start,end, sigma, limits, sample_count = 100, check_points = 100, init_points = 7)
+    succ_paths = []
+    success = planner.plan(start,end, sigma, limits, succ_paths, sample_count = 100, check_points = 100, init_points = 7)
+    print("# of successful paths: ", len(succ_paths))
 
     duration = time.time() - t_start
     print("Success: ", success)
@@ -190,13 +177,14 @@ def main():
         while viewer.is_running():
             step_start = time.time()
 
-            if sim_time < T_traj:
+            if sim_time <= T_traj:
                 u = min((sim_time) / T_traj, 1)
                 q_act = planner.evaluate(u)
                 # print("q_act: ", q_act.T)
                 mj_data.qpos[0:7] = planner.evaluate(u)
                 # print("u: ", u)
                 sim_time += dt
+                print("u: ", u, end="\r")
             # else:
             #     break
         

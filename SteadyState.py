@@ -54,11 +54,11 @@ class SteadyState:
         H_0_tool = pin_data.oMf[self.tool_frame_id]
         H_0_9 = pin_data.oMi[-1]
 
-        print("H_0_tool: ", H_0_tool)
-        print("H_0_9: ", H_0_9)
+        # print("H_0_tool: ", H_0_tool)
+        # print("H_0_9: ", H_0_9)
 
         self.H_tool_9 = H_0_tool.inverse() * H_0_9
-        print("H_tool_9: ", self.H_tool_9)
+        # print("H_tool_9: ", self.H_tool_9)
 
         # intialize casadi functions
         self.q_in = ca.SX.sym('q_in', 9,1)
@@ -87,12 +87,14 @@ class SteadyState:
 
         oMdes = pin.SE3(Rd, pd.T)
         oMact = self.pin_data.oMf[self.tool_frame_id]
-        iMd = oMdes.actInv(oMact)
+        # iMd = oMdes.actInv(oMact)
+        oMerr = oMdes * oMact.inverse()
+        # oRerr = oMdes.rotation @ oMact.rotation.T
 
         print("Rd: ", Rd)
         print("Ract: ", oMact.rotation)
 
-        R_ed = iMd.rotation - np.eye(3)
+        R_ed = oMerr.rotation
         frot = 2*(3-np.trace(R_ed))
         return frot
 
@@ -109,10 +111,11 @@ class SteadyState:
 
         oMdes = cpin.SE3(Rd, pd.T)
         oMact = self.cpin_data.oMf[self.tool_frame_id]
-        iMd = oMdes.actInv(oMact)
+        # iMd = oMdes.actInv(oMact)
+        oMerr = oMdes * oMact.inverse()
         
-        epos = iMd.translation
-        R_ed = iMd.rotation - SX.eye(3)
+        epos = oMerr.translation
+        R_ed = oMerr.rotation
         # frot = (dot(oMact.rotation[:,0], Rd[:,0]) - 1)**2
         
         # general orientation error
@@ -193,8 +196,8 @@ class SteadyState:
             # compare position with desired position
             p_out = H_out[:3, 3]
             p_des = pd
-            print("H_ik: ", H_out)
-            print("H_des: ", oMd)
+            # print("H_ik: ", H_out)
+            # print("H_des: ", oMd)
             pos_err = np.linalg.norm(p_out - p_des)
             if pos_err > 1e-3:
                 print("position error: ", pos_err)
