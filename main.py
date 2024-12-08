@@ -148,12 +148,16 @@ def main():
     print("a_end: ", a_end)
     print("a_des: ", a_des)
 
+    oMd = oMdes.actInv(oMend)
+    a_d = pin.log(oMd.rotation)
+    print("a_d: ", a_d)
+
     print("oMend.translation: ", oMend.translation)
     print("oMdes.translation: ", oMdes.translation)
 
     plot_triad(M_ls, label_ls)
 
-    exit()
+    # exit()
 
 
 
@@ -186,15 +190,15 @@ def main():
         while viewer.is_running():
             step_start = time.time()
 
-            if sim_time > T_traj:
-                break
-
-            u = min((sim_time) / T_traj, 1)
-            q_act = planner.evaluate(u)
-            # print("q_act: ", q_act.T)
-            mj_data.qpos[0:7] = planner.evaluate(u)
-            # print("u: ", u)
-            sim_time += dt
+            if sim_time < T_traj:
+                u = min((sim_time) / T_traj, 1)
+                q_act = planner.evaluate(u)
+                # print("q_act: ", q_act.T)
+                mj_data.qpos[0:7] = planner.evaluate(u)
+                # print("u: ", u)
+                sim_time += dt
+            # else:
+            #     break
         
             
             mujoco.mj_forward(mj_model, mj_data)

@@ -87,7 +87,7 @@ class SteadyState:
 
         oMdes = pin.SE3(Rd, pd.T)
         oMact = self.pin_data.oMf[self.tool_frame_id]
-        iMd = oMact.actInv(oMdes)
+        iMd = oMdes.actInv(oMact)
 
         print("Rd: ", Rd)
         print("Ract: ", oMact.rotation)
@@ -109,21 +109,21 @@ class SteadyState:
 
         oMdes = cpin.SE3(Rd, pd.T)
         oMact = self.cpin_data.oMf[self.tool_frame_id]
-        iMd = oMact.actInv(oMdes)
+        iMd = oMdes.actInv(oMact)
         
         epos = iMd.translation
         R_ed = iMd.rotation - SX.eye(3)
         # frot = (dot(oMact.rotation[:,0], Rd[:,0]) - 1)**2
         
         # general orientation error
-        # frot = 2*(3-trace(R_ed))
+        frot = 2*(3-trace(R_ed))
         fpos = dot(epos, epos)
 
         # cost function weights
         fpos *= cost_weight_parameters[0]
-        # frot *= cost_weight_parameters[1]
-        # f = fpos + frot 
-        f = fpos
+        frot *= cost_weight_parameters[1]
+        f = fpos + frot 
+        # f = fpos
 
         # constraints
         g = cpin.computeGeneralizedGravity(self.cpin_model, self.cpin_data, q.T)[7:]        
@@ -193,6 +193,8 @@ class SteadyState:
             # compare position with desired position
             p_out = H_out[:3, 3]
             p_des = pd
+            print("H_ik: ", H_out)
+            print("H_des: ", oMd)
             pos_err = np.linalg.norm(p_out - p_des)
             if pos_err > 1e-3:
                 print("position error: ", pos_err)
