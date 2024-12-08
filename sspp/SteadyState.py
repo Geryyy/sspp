@@ -155,7 +155,7 @@ class SteadyState:
                         # 'expect_infeasible_problem' : 'no',
                         # 'print_info_string' : 'no',
                         # 'fast_step_computation' : 'yes',
-                        'print_level' : 5} # 5
+                        'print_level' : 0} # 5
         nlp_options = {'ipopt' : ipopt_options,
                         'print_time' : 0}
         F = nlpsol('F', 'ipopt', nlp, nlp_options)
@@ -326,7 +326,7 @@ class SteadyState:
 
 if __name__ == "__main__":
 
-    import SteadyState as ss
+    import sspp.src.sspp.SteadyState as ss
     import numpy as np 
 
     # pinocchio

@@ -9,3 +9,19 @@ version = "0.2"
 description = "SSPP - Sampled Spline Path Planner Bindings for Python"
 authors = [{name = "Gerald Ebmer", email = "gerald.ebmer@tuwien.ac.at"}]
 
+
+# This section allows you to explicitly include files in the package
+# Instead of using [project.dynamic] you can specify [project.include]
+# List files relative to the top of the source tree (where pyproject.toml is)
+include = [
+    "sspp/__init__.py",        # Ensure the __init__.py file is included
+    "sspp/SteadyState.py",  # Explicitly include the Python module
+    "sspp/CubicPath.py"
+]
+
+# This is useful if you want to add additional CMake, configuration files, or data files.
+# [tool.scikit-build]
+# include = [
+#     "src/sspp/my_python_module.py", 
+#     "src/sspp/__init__.py"
+# ]

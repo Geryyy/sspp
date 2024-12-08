@@ -32,8 +32,12 @@ find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP REQUIRED)
 
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+
 # Add executable
-add_executable(${PROJECT_NAME} main.cpp Timer.h sspp.h)
+add_executable(${PROJECT_NAME} src/main.cpp include/Timer.h include/sspp.h)
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
@@ -47,7 +51,7 @@ if(OpenMP_CXX_FOUND)
 endif()
 
 # Python bindings
-pybind11_add_module(_sspp python_bindings.cpp)
+pybind11_add_module(_sspp src/python_bindings.cpp)
 target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
 install(TARGETS _sspp DESTINATION sspp)

@@ -1,4 +1,5 @@
 from sspp import _sspp as sp
+from sspp import CubicPath as cp
 import ctypes
 import os
 import sys
@@ -90,12 +91,10 @@ def plot_triad(transformations, labels, ax=None, scale=0.1, block=False):
 
 
 
-
-
 import time 
 import mujoco 
 import pinutil as pu
-import SteadyState as ss
+from sspp import SteadyState as ss
 # import numpy as np
 import pinocchio as pin
 
@@ -105,6 +104,8 @@ def main():
     site_names = ["wall/site_left_wall", "wall/site_right_wall"]
     site1_xpos = mj_data.site(site_names[0]).xpos + np.array([0,0,0.0])
     site2_xpos = mj_data.site(site_names[1]).xpos + np.array([0,0,0.0])
+
+    via_xpos = (site1_xpos + site2_xpos)/2+ np.array([0,0,0.3])
 
     q_init = np.array([0, 0, 0, np.pi/2, 0, -np.pi/2, 0, 0, 0])
 
@@ -136,27 +137,41 @@ def main():
     frot = iksolver.compute_frot(qd2, oMdes2.homogeneous)
     print("frot: ", frot)
 
+    # path end
+    oMvia = pu.create_se3_from_rpy_and_trans(np.array(via_xpos), np.array([0,0,np.pi]))
+    # q_ik, success = pu.inverse_kinematics_clik(pin_model, pin_data, q_init, joint_id, oMdes)
+    print("oMdes2: ", oMvia.homogeneous)
+    qvia, success = iksolver.inverse_kinematics(oMvia.homogeneous, qd1)
+    print("q_ik: ", qvia.T)
+    print("success: ", success)
+    # frot = iksolver.compute_frot(qvia, oMdes2.homogeneous)
+    # print("frot: ", frot)
+
+
     oMorigin = pu.create_se3_from_rpy_and_trans(np.array([0,0,0]), np.array([0,0,0]))
     oMstart = pu.get_frameSE3(pin_model, pin_data, qd1, tool_frame_id)
     oMend = pu.get_frameSE3(pin_model, pin_data, qd2, tool_frame_id)
 
-    M_ls = [oMorigin.homogeneous, oMstart.homogeneous, oMend.homogeneous, oMdes1.homogeneous, oMdes2.homogeneous]
-    label_ls = ["origin", "start", "end", "des1", "des2"]
+    M_ls = [oMorigin.homogeneous, oMstart.homogeneous, oMend.homogeneous, oMdes1.homogeneous, oMvia.homogeneous, oMdes2.homogeneous]
+    label_ls = ["origin", "start", "end", "des1", "via", "des2"]
 
     plot_triad(M_ls, label_ls, block=True)
 
    
 
     planner = sp.SamplingPathPlanner7(xml_path)
+    cubic_planner = cp.CubicPath()
 
     start = qd1[0:7]
     end = qd2[0:7] #+ np.array([0,0,0,0,0,0,1])
+    via = qvia[0:7] #+ np.array([0,0,0,0,0,0,1])
     sigma = 0.08
     limits = np.ones((7,1)) * np.pi
     
     t_start = time.time()
     succ_paths = []
-    success = planner.plan(start,end, sigma, limits, succ_paths, sample_count = 100, check_points = 100, init_points = 7)
+    # success = planner.plan(start,end, sigma, limits, succ_paths, sample_count = 100, check_points = 100, init_points = 7)
+    success = cubic_planner.plan(start, via, end)
     print("# of successful paths: ", len(succ_paths))
 
     duration = time.time() - t_start
@@ -179,9 +194,9 @@ def main():
 
             if sim_time <= T_traj:
                 u = min((sim_time) / T_traj, 1)
-                q_act = planner.evaluate(u)
+                # q_act = cubic_planner.evaluate(u)
                 # print("q_act: ", q_act.T)
-                mj_data.qpos[0:7] = planner.evaluate(u)
+                mj_data.qpos[0:7] = cubic_planner.evaluate(u)
                 # print("u: ", u)
                 sim_time += dt
                 print("u: ", u, end="\r")
