@@ -170,8 +170,8 @@ def main():
     
     t_start = time.time()
     succ_paths = []
-    success = planner.plan(start,end, sigma, limits, succ_paths, sample_count = 100, check_points = 100, init_points = 7)
-    # success = cubic_planner.plan(start, via, end)
+    # success = planner.plan(start,end, sigma, limits, succ_paths, sample_count = 100, check_points = 100, init_points = 7)
+    success = cubic_planner.plan(start, via, end)
     print("# of successful paths: ", len(succ_paths))
 
     duration = time.time() - t_start
@@ -196,7 +196,7 @@ def main():
                 u = min((sim_time) / T_traj, 1)
                 # q_act = cubic_planner.evaluate(u)
                 # print("q_act: ", q_act.T)
-                mj_data.qpos[0:7] = planner.evaluate(u)
+                mj_data.qpos[0:7] = cubic_planner.evaluate(u)
                 # print("u: ", u)
                 sim_time += dt
                 print("u: ", u, end="\r")

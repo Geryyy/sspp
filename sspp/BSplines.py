@@ -52,7 +52,12 @@ def bspline_derivative(theta, t, c, k):
   n = len(t) - k - 1
   return sum(c[i] * dB(theta, k, i, t) for i in range(n))
 
-  
+
+def knot_vector(n_control_points, k):
+  n_knots = n_control_points + k + 1  # Total number of knots for B-spline
+  t = np.linspace(0, 1, n_knots - 2 * k)  # Internal knots only
+  t = np.concatenate(([0] * k, t, [1] * k))  # Add k repeated knots at the ends
+  return t
 
 ##
 # Computes the SLERP interpolation starting from R0 at theta
@@ -125,9 +130,8 @@ def test_bspline():
   # Step 2: Generate the knot vector
   n_control_points = len(c)  # Number of control points
   k = 3  # Spline order
-  n_knots = n_control_points + k + 1  # Total number of knots for B-spline
-  t = np.linspace(0, 1, n_knots - 2 * k)  # Internal knots only
-  t = np.concatenate(([0] * k, t, [1] * k))  # Add k repeated knots at the ends
+  
+  
 
   theta = np.linspace(0, 1, 10) # evaluation points
   y = np.array([bspline(x, t, c, k) for x in theta])
@@ -151,9 +155,7 @@ def test_casadi_bspline():
     # Step 2: Generate the knot vector
     n_control_points = len(c)  # Number of control points
     k = 3  # Spline order
-    n_knots = n_control_points + k + 1  # Total number of knots for B-spline
-    t = np.linspace(0, 1, n_knots - 2 * k)  # Internal knots only
-    t = np.concatenate(([0] * k, t, [1] * k))  # Add k repeated knots at the ends
+    t = knot_vector(n_control_points, k)
 
     # Step 3: Evaluate the B-spline using CasADi
     theta = np.linspace(0, 1, 100)  # Evaluation points
