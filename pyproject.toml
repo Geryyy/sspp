@@ -16,7 +16,8 @@ authors = [{name = "Gerald Ebmer", email = "gerald.ebmer@tuwien.ac.at"}]
 include = [
     "sspp/__init__.py",        # Ensure the __init__.py file is included
     "sspp/SteadyState.py",  # Explicitly include the Python module
-    "sspp/CubicPath.py"
+    "sspp/CubicPath.py",
+    "sspp/BSplines.py"
 ]
 
 # This is useful if you want to add additional CMake, configuration files, or data files.
