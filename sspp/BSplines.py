@@ -11,7 +11,7 @@ from sspp import _sspp as sp
 def B(theta, k, i, t):
   if k == 0:
     #return 1.0 if t[i] <= theta < t[i+1] else 0.0
-    if t[i] <= theta < t[i+1]:
+    if t[i] <= theta <= t[i+1]:
       return 1.0
     #if i == len(t) - k - 2 and theta == t[i+1]:
     #  return 1.0
@@ -58,6 +58,49 @@ def knot_vector(n_control_points, k):
   t = np.linspace(0, 1, n_knots - 2 * k)  # Internal knots only
   t = np.concatenate(([0] * k, t, [1] * k))  # Add k repeated knots at the ends
   return t
+
+
+def compute_control_points(via_points, k):
+  """
+  Computes the control points given a set of via points and the spline order k.
+  
+  Parameters:
+  via_points (ndarray): An array of shape (n, d) where n is the number of via points 
+                        and d is the dimensionality of the points (e.g., 2D, 3D).
+  k (int): The order of the B-spline.
+  
+  Returns:
+  ndarray: Control points corresponding to the via points.
+  ndarray: Knot vector for the B-spline.
+  """
+  n_via_points = len(via_points)
+  n_control_points = n_via_points
+  
+  # Generate the knot vector using the existing knot_vector function
+  t = knot_vector(n_control_points, k)
+  
+  # Set up the system of linear equations to solve for control points
+  A = np.zeros((n_via_points, n_control_points))
+  for i in range(n_via_points):
+    for j in range(n_control_points):
+      A[i, j] = B(i / (n_via_points - 1), k, j, t)
+      # print("---")
+      # print("i: ", i, "j: ", j)
+      # print("theta: ", i / (n_via_points - 1))
+      # print("index j: ", j)
+      # print("B: ", B(i / (n_via_points - 1), k, j, t))
+  
+  # Solve the system of equations for control points for each dimension of the via points
+  control_points = np.linalg.lstsq(A, via_points, rcond=None)[0]
+
+  print("A: \n", A)
+  print("control_points: \n", control_points)
+  # remove the last control point and repeat the second to last via point
+  # control_points = np.vstack((control_points[:-1], control_points[-2]))
+  
+  return control_points, t
+
+
 
 ##
 # Computes the SLERP interpolation starting from R0 at theta
