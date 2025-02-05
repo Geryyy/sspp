@@ -2,7 +2,7 @@ import numpy as np
 import pinocchio as pin
 from pinocchio import casadi as cpin
 import casadi as ca
-import arc_core as ac
+import arcpy.core as ac
 from casadi import *
 from scipy.spatial.transform import Rotation
 from importlib.resources import files # for accessing casadi data files
