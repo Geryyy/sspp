@@ -326,14 +326,14 @@ class SteadyState:
 
 if __name__ == "__main__":
 
-    import sspp.src.sspp.SteadyState as ss
+    import sspp.SteadyState as ss
     import numpy as np 
 
     # pinocchio
     pin_model, env = cre.create_robocrane_pinocchio_models()
     pin_data = pin_model.createData()
     tool_frame_id = cre.get_gripper_point_frame_id(pin_model)
-    # ef_frame_id = cre.get_endeffector_frame_id(pin_model)
+    ef_frame_id = cre.get_endeffector_frame_id(pin_model)
     print("tool_frame_id: ", tool_frame_id)
     # print("ef_frame_id: ", ef_frame_id)
 
