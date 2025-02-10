@@ -106,6 +106,11 @@ namespace sspp
             return spline(u);
         }
 
+        Spline::ControlPointVectorType get_ctrl_pts() const
+        {
+            return path_spline_.ctrls();
+        }
+
         Spline sampleWithNoise(const Spline &init_spline, double sigma, const Point &limits, std::default_random_engine &generator)
         {
             std::normal_distribution<double> distribution(0.0, sigma);
