@@ -58,6 +58,7 @@ PYBIND11_MODULE(_sspp, m) {
     bind_SamplingPathPlanner<3>(m, "SamplingPathPlanner3", "Spline3");
     bind_SamplingPathPlanner<6>(m, "SamplingPathPlanner6", "Spline6");
     bind_SamplingPathPlanner<7>(m, "SamplingPathPlanner7", "Spline7");
+    bind_SamplingPathPlanner<9>(m, "SamplingPathPlanner9", "Spline9");
 
     m.def("create_model_capsule", [](uint64_t model) {
         return py::capsule(reinterpret_cast<void*>(model), "mjModel");

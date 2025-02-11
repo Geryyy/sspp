@@ -10,3 +10,10 @@ sampled spline path planner
 ```python
 from sspp import _sspp as planner
 ```
+
+# Run tests
+
+```bash
+python -m unittest discover -s sspp/tests -p "test_BSplines.py"
+
+```

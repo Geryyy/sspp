@@ -1,6 +1,6 @@
 import numpy as np
 import casadi as ca
-from sspp import _sspp as sp
+# from sspp import _sspp as sp
 
 ## BSpline basis function scipy help, can be implemented in casadi
 # evaluated at theta
@@ -11,11 +11,12 @@ from sspp import _sspp as sp
 def B(theta, k, i, t):
   if k == 0:
     #return 1.0 if t[i] <= theta < t[i+1] else 0.0
-    if t[i] <= theta <= t[i+1]:
+    if t[i] <= theta < t[i+1]:
       return 1.0
+    else:
+      return 0.0
     #if i == len(t) - k - 2 and theta == t[i+1]:
     #  return 1.0
-    return 0.0
   if t[i+k] == t[i]:
     c1 = 0.0
   else:
@@ -24,6 +25,7 @@ def B(theta, k, i, t):
     c2 = 0.0
   else:
     c2 = (t[i+k+1] - theta)/(t[i+k+1] - t[i+1]) * B(theta, k-1, i+1, t)
+
   return c1 + c2
 
 def dB(theta, k, i, t):
@@ -89,12 +91,15 @@ def compute_control_points(via_points, k):
       # print("theta: ", i / (n_via_points - 1))
       # print("index j: ", j)
       # print("B: ", B(i / (n_via_points - 1), k, j, t))
+  A[0, 0] = 1.0
+  A[n_via_points - 1, n_control_points - 1] = 1.0
   
   # Solve the system of equations for control points for each dimension of the via points
   control_points = np.linalg.lstsq(A, via_points, rcond=None)[0]
 
-  print("A: \n", A)
-  print("control_points: \n", control_points)
+  np.set_printoptions(precision=2, suppress=True)
+  # print("A: \n", A)
+  # print("control_points: \n", control_points)
   # remove the last control point and repeat the second to last via point
   # control_points = np.vstack((control_points[:-1], control_points[-2]))
   
@@ -191,7 +196,7 @@ import matplotlib.pyplot as plt
 
 def test_casadi_bspline():
     # Step 1: Initialize control points
-    q0 = np.zeros(7)
+    q0 = np.ones(7)
     q1 = np.ones(7)
     c = np.linspace(q0, q1, 7)  # 7 control points from np.zeros(7) to np.ones(7)
     
@@ -210,6 +215,32 @@ def test_casadi_bspline():
     plt.show()
 
 
+def test_numpy_bspline():
+  n_ctrl_pts = 7
+  k = 1
+  q_start = np.ones((9,))*0.5
+  q_end = np.ones((9,))*0.5
+  via_pts = (np.linspace(q_start, q_end, n_ctrl_pts))
+  # compute bspline
+  ctr_pts, knot_vec = compute_control_points(via_pts, k)
+  np.set_printoptions(precision=2, suppress=True)
+  print("via_pts: \n", via_pts)
+  print("ctr pts: \n", ctr_pts)
+  # ctr_pts = via_pts
+
+  u_vec = np.linspace(0, 1, 100)
+  q_vec = np.array([bspline(u, knot_vec, ctr_pts, k) for u in u_vec])
+
+  plt.figure()
+  for i in range(9):
+      plt.plot(u_vec, q_vec[:, i], label=f'q_vec[:, {i}]')
+  plt.grid()
+  plt.legend()
+  plt.show()
+
+
 if __name__ == '__main__':
     # test_bspline()
     test_casadi_bspline()
+
+    test_numpy_bspline()
