@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.24)
 project(sspp)
 
 # Ignore Conda environment
@@ -37,13 +37,15 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 
 
 # Add executable
-add_executable(${PROJECT_NAME} src/main.cpp include/Timer.h include/sspp.h)
+# add_executable(${PROJECT_NAME} src/main.cpp include/Timer.h include/sspp.h)
+add_executable(${PROJECT_NAME} src/main_tsp.cpp include/Timer.h include/tsp.h include/utility.h)
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
     PUBLIC mujoco::mujoco
     PUBLIC Threads::Threads
     PUBLIC Eigen3::Eigen
+    PUBLIC glfw
 )
 
 if(OpenMP_CXX_FOUND)
