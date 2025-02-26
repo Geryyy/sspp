@@ -46,6 +46,7 @@ target_link_libraries(${PROJECT_NAME}
     PUBLIC Threads::Threads
     PUBLIC Eigen3::Eigen
     PUBLIC glfw
+    PUBLIC OpenMP::OpenMP_CXX
 )
 
 if(OpenMP_CXX_FOUND)

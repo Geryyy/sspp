@@ -134,12 +134,15 @@ namespace tsp
             int p = kSplineDegree;
 
             // Apply noise to control points except boundaries
+
             for (int i = 0; i < control_points.rows(); ++i)
             {
+//                std::cout << "ctr_pt no   noise: " << control_points.row(i) << std::endl;
                 for (int j = p; j < control_points.cols() - p; ++j)
                 {
                     control_points(i, j) += distribution(generator) * limits(i);
                 }
+//                std::cout << "ctr_pt with noise: " << control_points.row(i) << std::endl;
             }
 
             return Spline(init_spline.knots(), control_points);
@@ -157,10 +160,18 @@ namespace tsp
                     data->qpos[j] = point(j);
                 }
                 mj_forward(model_, data);
-                if (data->ncon > 0)
-                {
-                    return true;
+
+                // iterate over all contacts
+                for(int i=0; i<data->ncon; i++) {
+//                    std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
+                    if (data->contact[i].dist < -1e-3)
+                    {
+                        std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
+                        return true;
+                    }
                 }
+
+
             }
             return false;
         }

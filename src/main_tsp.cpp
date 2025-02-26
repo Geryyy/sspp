@@ -23,7 +23,6 @@ mjvScene scn;                       // abstract scene
 mjrContext con;                     // custom GPU context
 
 
-
 Eigen::Vector3d get_body_position(mjModel* m, mjData* d, std::string name){
     auto block_id = mj_name2id(m, mjtObj::mjOBJ_BODY, name.c_str());
 //    std::cout << block_name << " id: " << block_id << std::endl;
@@ -107,35 +106,57 @@ void scroll(GLFWwindow* window, double xoffset, double yoffset) {
 
 
 
-void draw_line(mjvScene* scn, Eigen::Vector3d start_pos, Eigen::Vector3d end_pos, int line_width=5){
+void draw_line(mjvScene* scn, Eigen::Vector3d start_pos, Eigen::Vector3d end_pos, int line_width=5) {
     Eigen::Vector3d line_size;
     Eigen::Vector3d line_pos;
     Eigen::Matrix3d line_rotmat;
     Eigen::Vector4f line_rgba;
     line_size << 10, 10., 10.;
-    line_pos << 0.5,0.2,0.2;
-    line_rotmat << 1,0,0,0,1,0,0,0,1;
-    line_rgba << 1,1,0,1;
+    line_pos << 0.5, 0.2, 0.2;
+    line_rotmat << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+    line_rgba << 1, 1, 0, 1;
 
     scn->ngeom++;
-    mjvGeom* geom_ptr = &scn->geoms[scn->ngeom-1];
+    mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
     mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), line_pos.data(), NULL, line_rgba.data());
     mjv_connector(geom_ptr, mjGEOM_LINE, line_width, start_pos.data(), end_pos.data());
-
-// Add the line to the scene
-    //mjv_addGeom(m, scn, &geom_line);
-//    mjv_addGeoms(m, d, &opt, NULL, mjCAT_ALL, &scn);
 }
+
+
+void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, int line_width=5) {
+    Eigen::Vector3d line_size;
+    Eigen::Vector3d line_pos;
+//    Eigen::Matrix3d line_rotmat;
+    Eigen::Vector4f line_rgba;
+    line_size << 10, 10., 10.;
+    line_pos << 0.5, 0.2, 0.2;
+//    line_rotmat << 1, 0, 0, 0, 1, 0, 0, 0, 1;
+    line_rgba << 1, 1, 0, 1;
+
+    for(int i = 1; i < pts.size(); i++){
+        Eigen::Vector3d start_pos = pts[i-1];
+        Eigen::Vector3d end_pos = pts[i];
+
+        if(scn->ngeom >= scn->maxgeom-1)
+            break;
+
+        scn->ngeom++;
+        mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
+        mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), start_pos.data(), NULL, line_rgba.data());
+        mjv_connector(geom_ptr, mjGEOM_LINE, line_width, start_pos.data(), end_pos.data());
+//        std::cout << "start_pos("<<i<<"): " << start_pos.transpose() << std::endl;
+//        std::cout << "end_pos("<<i<<"): " << end_pos.transpose() << std::endl;
+    }
+
+}
+
 
 
 int main(int argc, char** argv) {
     Timer exec_timer;
-
     std::cout << "Mujoco Collission Checker" << std::endl;
-
     // Print MuJoCo version
     std::cout << "MuJoCo version: " << mj_version() << std::endl;
-
     // Print Eigen version
     std::cout << "Eigen version: " << EIGEN_WORLD_VERSION << "."
               << EIGEN_MAJOR_VERSION << "."
@@ -146,16 +167,10 @@ int main(int argc, char** argv) {
 
     std::cout << "DoFs: " << m->nq << std::endl;
 
-//    exec_timer.tic();
-//    for(int i = 0; i < 100000; i++) {
-//        mj_step(m, d);
-////        mj_collision(m, d);
-//    }
-//    std::cout << "Execution time: " << static_cast<double>(exec_timer.toc())*1e-3/100000. << " us" << std::endl;
 
     mj_forward(m, d);
     mj_collision(m,d);
-
+//
 //    // get the number of contacts
 //    std::cout << "Number of contacts: " << d->ncon << std::endl;
 //
@@ -176,9 +191,24 @@ int main(int argc, char** argv) {
     using Point = TSP::Point;
     TSP::Spline init_spline;
     Point end_derivative;
-    end_derivative << 0,0,1;
-    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, init_spline, 3);
+    end_derivative << 0,0,-1;
+    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, init_spline, 10);
     std::cout << "Error code: " << err_code << std::endl;
+    Point limits;
+    limits << 1,1,1;
+    double sigma = 0.2;
+    int sample_cnt = 10;
+    int check_cnt = 10;
+    int ctrl_cnt = 5;
+    Point end_pos = block2_pos;
+    end_pos[2] += 0.3;
+    Point start_pos;
+    start_pos = block1_pos;
+//    start_pos[2] += 0.1;
+//    start_pos << 1,1,1;
+    auto ret = path_planner.plan(start_pos, end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, ctrl_cnt);
+    std::cout << "ret: " << ret << std::endl;
+//    return 0;
 
 
 
@@ -209,21 +239,14 @@ int main(int argc, char** argv) {
     glfwSetMouseButtonCallback(window, mouse_button);
     glfwSetScrollCallback(window, scroll);
 
-
-
-    // Define the start and end points of the line
-    mjtNum start_x = 0.0;
-    mjtNum start_y = 0.0;
-    mjtNum start_z = 0.0;
-    mjtNum end_x = 1.0;
-    mjtNum end_y = 1.0;
-    mjtNum end_z = 1.0;
-
-
-// Set the line's start and end points
-
-
-
+    const int pts_cnt = 50;
+    std::vector<Point> pts;
+    for(int i = 0; i < pts_cnt; i++){
+        double u = static_cast<double>(i)/pts_cnt;
+        auto pt = path_planner.evaluate(u);
+        pts.push_back(pt);
+//        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
+    }
 
     // run main loop, target real-time simulation and 60 fps rendering
     while (!glfwWindowShouldClose(window)) {
@@ -234,6 +257,13 @@ int main(int argc, char** argv) {
         mjtNum simstart = d->time;
         while (d->time - simstart < 1.0/60.0) {
             mj_step(m, d);
+//            d->qpos[0] = start_pos[0];
+//            d->qpos[1] = start_pos[1];
+//            d->qpos[2] = start_pos[2];
+//
+//            d->qpos[7+0] = end_pos[0];
+//            d->qpos[7+1] = end_pos[1];
+//            d->qpos[7+2] = end_pos[2];
         }
 
         // get framebuffer viewport
@@ -242,8 +272,11 @@ int main(int argc, char** argv) {
 
         // update scene and render
         mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
-        draw_line(&scn, block1_pos, block2_pos);
+
+//      draw_line(&scn, block1_pos, block2_pos);
+        draw_path(&scn, pts);
         mjr_render(viewport, &scn, &con);
+//        return 0;
 
 
         // swap OpenGL buffers (blocking call due to v-sync)
