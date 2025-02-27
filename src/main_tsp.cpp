@@ -12,7 +12,8 @@
 #include <mujoco/mujoco.h>
 
 // Path to the XML file for the MuJoCo model
-const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
+//const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
+const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -106,13 +107,46 @@ void scroll(GLFWwindow* window, double xoffset, double yoffset) {
 
 
 
-void draw_sphere(mjvScene* scn, Eigen::Vector3d pos, float size=0.1) {
+void draw_sphere(mjvScene* scn, Eigen::Vector3d pos, float size=0.1, float* rgba = nullptr) {
     Eigen::Vector3d line_size = Eigen::Vector3d::Ones() * size;
     float line_rgba[] = {1,0,1,1};
 
+    if(!rgba) {
+        rgba = line_rgba;
+    }
+
     scn->ngeom++;
     mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
-    mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), pos.data(), NULL, line_rgba);
+    mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), pos.data(), NULL, rgba);
+}
+
+
+void draw_arrow(mjvScene* scn, Eigen::Vector3d pos, Eigen::Vector3d gradient, float size=0.1, float* rgba = nullptr) {
+    if (gradient.norm() < 1e-6) return; // Avoid division by zero for zero gradient
+
+    Eigen::Vector3d line_size;
+    line_size << 0.1,0.1,1.0;
+    line_size *= size;
+    Eigen::Matrix3d rotmat;
+
+    // Normalize gradient to get direction
+    Eigen::Vector3d dir = gradient.normalized();
+    Eigen::Vector3d z_axis(0, 0, 1); // Default arrow orientation in MuJoCo
+
+    // Compute quaternion rotation from z-axis to gradient direction
+    Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(z_axis, dir);
+
+    // Convert quaternion to rotation matrix
+    rotmat = q.toRotationMatrix();
+
+    float line_rgba[] = {1, 0.5, 0.5, 1};
+    if (!rgba) {
+        rgba = line_rgba;
+    }
+
+    scn->ngeom++;
+    mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
+    mjv_initGeom(geom_ptr, mjGEOM_ARROW, line_size.data(), pos.data(), rotmat.data(), rgba);
 }
 
 
@@ -146,8 +180,17 @@ int main(int argc, char** argv) {
     std::cout << "Eigen version: " << EIGEN_WORLD_VERSION << "."
               << EIGEN_MAJOR_VERSION << "."
               << EIGEN_MINOR_VERSION << std::endl;
+    char error_buffer_[1000]; // Buffer for storing MuJoCo error messages
+    m = mj_loadXML(modelFile.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
+    if (!m)
+    {
+        throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
+    }
 
-    m = mj_loadXML(modelFile.c_str(), NULL, NULL, 0);
+    if(!m) {
+        std::cerr << "Error reading mujoco XML!" << std::endl;
+        return -1;
+    }
     d = mj_makeData(m);
 
     std::cout << "DoFs: " << m->nq << std::endl;
@@ -195,10 +238,10 @@ int main(int argc, char** argv) {
 //    start_pos << 1,1,1;
     auto ret = path_planner.plan(start_pos, end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, ctrl_cnt);
     std::cout << "ret: " << ret << std::endl;
-//    return 0;
 
-
-
+    Point coll_gradient = path_planner.get_coll_gradient();
+    auto via_pts = path_planner.get_via_pts();
+    float via_color[] = {0,1,1,1};
 
     // init GLFW
     if (!glfwInit()) {
@@ -248,13 +291,6 @@ int main(int argc, char** argv) {
         mjtNum simstart = d->time;
         while (d->time - simstart < 1.0/60.0) {
             mj_step(m, d);
-//            d->qpos[0] = start_pos[0];
-//            d->qpos[1] = start_pos[1];
-//            d->qpos[2] = start_pos[2];
-//
-//            d->qpos[7+0] = end_pos[0];
-//            d->qpos[7+1] = end_pos[1];
-//            d->qpos[7+2] = end_pos[2];
         }
 
         // get framebuffer viewport
@@ -264,18 +300,22 @@ int main(int argc, char** argv) {
         // update scene and render
         mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
 
-//      draw_line(&scn, block1_pos, block2_pos);
         draw_path(&scn, pts);
 
-//        Point p = Point(1,2,3);
-//        draw_sphere(&scn, p, 1);
+        // control points
         for(int i = 0; i < ctrls.cols(); i++){
             Point c = ctrls.col(i);
             draw_sphere(&scn, c, 0.03);
         }
-        mjr_render(viewport, &scn, &con);
-//        return 0;
 
+        // via points
+        for(auto p : via_pts) {
+            draw_sphere(&scn,p,0.03, via_color);
+        }
+
+        // collision gradient
+        draw_arrow(&scn, via_pts[1], coll_gradient, 0.5);
+        mjr_render(viewport, &scn, &con);
 
         // swap OpenGL buffers (blocking call due to v-sync)
         glfwSwapBuffers(window);
@@ -292,11 +332,6 @@ int main(int argc, char** argv) {
     mj_deleteData(d);
     mj_deleteModel(m);
     return 0;
-
-
-
-
-
 
 
 
