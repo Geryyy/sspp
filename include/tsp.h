@@ -16,36 +16,45 @@
 
 namespace tsp
 {
+    static constexpr int kSplineDegree = 2;
+    static constexpr int kDOF = 3;
+    using Point = Eigen::Matrix<double, kDOF, 1>;
+    using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
+
     struct CollisionPoint{
         double spline_param;
         double collision_distance;
+        Point coll_point;
+
+        CollisionPoint(double spline_param, double coll_dist, Point coll_point)
+            : spline_param(spline_param), collision_distance(coll_dist), coll_point(coll_point) {}
     };
 
     class TaskSpacePlanner
     {
-    public:
-        static constexpr int kDOF = 3;
-        static constexpr int kSplineDegree = 3;
-        using Point = Eigen::Matrix<double, kDOF, 1>;
-        using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
-
     private:
         using SplineFitter = Eigen::SplineFitting<Spline>;
 
         Spline path_spline_;
         mjModel *model_;
+        mjData *data_;
         char error_buffer_[1000]; // Buffer for storing MuJoCo error messages
-        std::vector<mjData *> data_copies_;
-        std::default_random_engine generator_;
+        std::vector<double> param_vec;
+        std::vector<Point> via_points;
+        std::vector<CollisionPoint> coll_pts;
 
     public:
-        TaskSpacePlanner(mjModel *model, mjData *data)
-            : model_(model)
+        TaskSpacePlanner(mjModel *model)
+            : model_(model), via_points(), param_vec(), coll_pts()
         {
-            initializeDataCopies(data);
+            data_ = mj_makeData(model_);
+            if (!data_)
+            {
+                throw std::runtime_error("Failed to create MuJoCo data structure.");
+            }
         }
 
-        TaskSpacePlanner(const std::string &xml_string)
+        TaskSpacePlanner(const std::string &xml_string) : via_points(), param_vec(), coll_pts()
         {
             // Parse the model from the XML string
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
@@ -55,60 +64,43 @@ namespace tsp
             }
 
             // Create the mjData structure associated with the model
-            auto data_ = mj_makeData(model_);
+            data_ = mj_makeData(model_);
             if (!data_)
             {
-                mj_deleteModel(model_);
                 throw std::runtime_error("Failed to create MuJoCo data structure.");
             }
 
-            // Initialize data copies
-            initializeDataCopies(data_);
         }
 
-        // work around for python bindings
-        TaskSpacePlanner(void *model_ptr, void *data_ptr)
-        {
-            // Cast void* to mjModel* and mjData*
-            model_ = static_cast<mjModel *>(model_ptr);
-            mjData *data_ = static_cast<mjData *>(data_ptr);
-            initializeDataCopies(data_);
-        }
 
         ~TaskSpacePlanner()
         {
-            for (auto &data_copy : data_copies_)
-            {
-                mj_deleteData(data_copy);
-            }
+            mj_deleteModel(model_);
         }
 
-        int initializePath(const Point &start, const Point &end, const Point &end_derivative, Spline &init_spline, int num_points = 10)
+        int initializePath(const Point &start, const Point &end, const Point &end_derivative, int num_points = 3)
         {
-            Eigen::VectorXd u_knots(num_points, 1);
-            Eigen::MatrixXd via_points(kDOF, num_points);
-            
+            param_vec.clear();
+            via_points.clear();
+
             // linear placement of via points from start to end
             for (int i = 0; i < num_points; ++i)
             {
                 double t = static_cast<double>(i) / (num_points - 1);
                 Point point = (1 - t) * start + t * end;
-                via_points.col(i) = point;
-                u_knots(i) = t;
+                param_vec.push_back(t);
+                via_points.push_back(point);
             }
 
-            // init_spline = SplineFitter::Interpolate(via_points, kSplineDegree, u_knots);
+            Eigen::Map<Eigen::VectorXd> u_knots(param_vec.data(), num_points);
+            Eigen::MatrixXd via_mat(kDOF, num_points);
+            for(size_t i = 0; i < via_points.size(); i++){
+                via_mat.block<3,1>(0,i) = via_points[i];
+            }
+
             Eigen::MatrixXd derivatives = end_derivative;
-            // derivates.push_back(end_derivates);
             Eigen::Vector<int, 1> deriv_ind(num_points -1);
-//            deriv_ind << num_points -1;
-//            std::cout << "via_points: " << via_points << std::endl;
-//            std::cout << "derivatives: " << derivatives << std::endl;
-//            std::cout << "deriv_ind: " << deriv_ind << std::endl;
-//            std::cout << "u_knots: " << u_knots << std::endl;
-//            init_spline = SplineFitter::Interpolate(via_points, kSplineDegree, u_knots);
-            init_spline = SplineFitter::InterpolateWithDerivatives(via_points, derivatives, deriv_ind, kSplineDegree, u_knots);
-            path_spline_ = init_spline;
+            path_spline_ = SplineFitter::InterpolateWithDerivatives(via_mat, derivatives, deriv_ind, kSplineDegree, u_knots);
             return 0;
         }
 
@@ -117,38 +109,17 @@ namespace tsp
             return path_spline_(u);
         }
 
-        Point evaluate(const Spline &spline, double u) const
-        {
-            return spline(u);
-        }
 
         Spline::ControlPointVectorType get_ctrl_pts() const
         {
             return path_spline_.ctrls();
         }
 
-        Spline sampleWithNoise(const Spline &init_spline, double sigma, const Point &limits, std::default_random_engine &generator)
-        {
-            std::normal_distribution<double> distribution(0.0, sigma);
-            auto control_points = init_spline.ctrls();
-            int p = kSplineDegree;
-
-            // Apply noise to control points except boundaries
-
-            for (int i = 0; i < control_points.rows(); ++i)
-            {
-//                std::cout << "ctr_pt no   noise: " << control_points.row(i) << std::endl;
-                for (int j = p; j < control_points.cols() - p; ++j)
-                {
-                    control_points(i, j) += distribution(generator) * limits(i);
-                }
-//                std::cout << "ctr_pt with noise: " << control_points.row(i) << std::endl;
-            }
-
-            return Spline(init_spline.knots(), control_points);
+        void perturb(){
+            return;
         }
 
-        bool checkCollision(const Spline &spline, int num_samples, mjData *data) const
+        bool checkCollision(const Spline &spline, int num_samples, mjData *data)
         {
             for (int i = 0; i <= num_samples; ++i)
             {
@@ -164,8 +135,22 @@ namespace tsp
                 // iterate over all contacts
                 for(int i=0; i<data->ncon; i++) {
 //                    std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
-                    if (data->contact[i].dist < -1e-3)
+                    auto col_dist = data->contact[i].dist;
+                    if (col_dist < -1e-3)
                     {
+                        auto nv = model_->nv;
+                        auto nJ = data_->nJ;
+
+                        if(nJ>0){
+                            int nc = nJ/nv;
+                            std::cout << "dimension of constrained jacobian nc: " << nc <<" x nv: " << nv << std::endl;
+                            Eigen::Map<Eigen::MatrixXd> J_constr(data->efc_J, nv, nc);
+                            std::cout << "J_constr:\n" << J_constr.transpose() << std::endl;
+                            std::cout << "ncon: " << data->ncon << std::endl;
+                        }
+
+                        CollisionPoint col_pt(u, col_dist, point);
+                        coll_pts.push_back(col_pt);
                         std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
                         return true;
                     }
@@ -200,11 +185,11 @@ namespace tsp
             double min_cost = std::numeric_limits<double>::infinity();
             bool found = false;
 
-#pragma omp parallel for
+//#pragma omp parallel for
             for (size_t i = 0; i < successful_paths.size(); ++i)
             {
                 double cost = computeArcLength(successful_paths[i], check_points);
-#pragma omp critical
+//#pragma omp critical
                 {
                     if (cost < min_cost)
                     {
@@ -218,57 +203,28 @@ namespace tsp
             return found;
         }
 
-        bool plan(const Point &start, const Point &end, const Point &end_derivative, double sigma, const Point &limits,
-                  std::vector<Spline> &ret_success_paths, int sample_count = 50,
+        bool plan(const Point &start, const Point &end, const Point &end_derivative, double sigma, const Point &limits, int sample_count = 50,
                   int check_points = 50, int init_points = 10)
         {
+            coll_pts.clear();
+            initializePath(start, end, end_derivative, init_points);
 
-            Spline init_spline;
-            initializePath(start, end, end_derivative, init_spline, init_points);
-            std::vector<Spline> successful_paths;
-
-#pragma omp parallel
             {
-                std::default_random_engine thread_generator(omp_get_thread_num());
 
-#pragma omp for schedule(dynamic, 1)
                 for (int i = 0; i < sample_count; ++i)
                 {
-                    Spline sampled_spline = sampleWithNoise(init_spline, sigma, limits, thread_generator);
-                    mjData *thread_data = data_copies_[omp_get_thread_num()];
+                    perturb();
 
-                    if (!checkCollision(sampled_spline, check_points, thread_data))
+                    if (!checkCollision(path_spline_, check_points, data_))
                     {
-#pragma omp critical
-                        successful_paths.push_back(sampled_spline);
+                        std::cout << "ready!" << std::endl;
                     }
                 }
             }
 
-            std::cout << "Sampled " << sample_count << " splines. Successful paths found: " << successful_paths.size() << std::endl;
-
-            ret_success_paths = successful_paths;
-            return findBestPath(successful_paths, path_spline_, check_points);
+            return false;
         }
 
-        bool plan(const Point &start, const Point &end, const Point &end_derivative, double sigma, const Point &limits, int sample_count = 50,
-                  int check_points = 50, int init_points = 10)
-        {
-            std::vector<Spline> successful_paths;
-            return plan(start, end, end_derivative, sigma, limits, successful_paths, sample_count, check_points, init_points);
-        }
-
-    private:
-        void initializeDataCopies(mjData *data)
-        {
-            int max_threads = omp_get_max_threads();
-            data_copies_.resize(max_threads, nullptr);
-
-            for (auto &data_copy : data_copies_)
-            {
-                data_copy = mj_copyData(nullptr, model_, data);
-            }
-        }
     };
 
 } // namespace sspp

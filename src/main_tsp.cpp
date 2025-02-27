@@ -106,32 +106,19 @@ void scroll(GLFWwindow* window, double xoffset, double yoffset) {
 
 
 
-void draw_line(mjvScene* scn, Eigen::Vector3d start_pos, Eigen::Vector3d end_pos, int line_width=5) {
-    Eigen::Vector3d line_size;
-    Eigen::Vector3d line_pos;
-    Eigen::Matrix3d line_rotmat;
-    Eigen::Vector4f line_rgba;
-    line_size << 10, 10., 10.;
-    line_pos << 0.5, 0.2, 0.2;
-    line_rotmat << 1, 0, 0, 0, 1, 0, 0, 0, 1;
-    line_rgba << 1, 1, 0, 1;
+void draw_sphere(mjvScene* scn, Eigen::Vector3d pos, float size=0.1) {
+    Eigen::Vector3d line_size = Eigen::Vector3d::Ones() * size;
+    float line_rgba[] = {1,0,1,1};
 
     scn->ngeom++;
     mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
-    mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), line_pos.data(), NULL, line_rgba.data());
-    mjv_connector(geom_ptr, mjGEOM_LINE, line_width, start_pos.data(), end_pos.data());
+    mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), pos.data(), NULL, line_rgba);
 }
 
 
-void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, int line_width=5) {
-    Eigen::Vector3d line_size;
-    Eigen::Vector3d line_pos;
-//    Eigen::Matrix3d line_rotmat;
-    Eigen::Vector4f line_rgba;
-    line_size << 10, 10., 10.;
-    line_pos << 0.5, 0.2, 0.2;
-//    line_rotmat << 1, 0, 0, 0, 1, 0, 0, 0, 1;
-    line_rgba << 1, 1, 0, 1;
+void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=5.0) {
+    Eigen::Vector3d line_size = Eigen::Vector3d::Ones()*width;
+    float line_rgba[] = {1,1,0,1};
 
     for(int i = 1; i < pts.size(); i++){
         Eigen::Vector3d start_pos = pts[i-1];
@@ -142,10 +129,8 @@ void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, int line_width=5
 
         scn->ngeom++;
         mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
-        mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), start_pos.data(), NULL, line_rgba.data());
-        mjv_connector(geom_ptr, mjGEOM_LINE, line_width, start_pos.data(), end_pos.data());
-//        std::cout << "start_pos("<<i<<"): " << start_pos.transpose() << std::endl;
-//        std::cout << "end_pos("<<i<<"): " << end_pos.transpose() << std::endl;
+        mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), start_pos.data(), NULL, line_rgba);
+        mjv_connector(geom_ptr, mjGEOM_LINE, width, start_pos.data(), end_pos.data());
     }
 
 }
@@ -166,6 +151,8 @@ int main(int argc, char** argv) {
     d = mj_makeData(m);
 
     std::cout << "DoFs: " << m->nq << std::endl;
+    std::cout << "Jacobian sparse: " << mj_isSparse(m) << std::endl;
+    std::cout << "jacobian dimension: " << d->nJ << std::endl;
 
 
     mj_forward(m, d);
@@ -187,24 +174,24 @@ int main(int argc, char** argv) {
     // static sampling path planner
     std::cout << "Taskspace Planner" << std::endl;
     using TSP = tsp::TaskSpacePlanner;
-    TSP path_planner(m, d);
-    using Point = TSP::Point;
-    TSP::Spline init_spline;
+    TSP path_planner(m);
+    using Point = tsp::Point;
+    tsp::Spline init_spline;
     Point end_derivative;
     end_derivative << 0,0,-1;
-    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, init_spline, 10);
+    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
     std::cout << "Error code: " << err_code << std::endl;
     Point limits;
     limits << 1,1,1;
     double sigma = 0.2;
-    int sample_cnt = 10;
+    int sample_cnt = 1;
     int check_cnt = 10;
-    int ctrl_cnt = 5;
+    int ctrl_cnt = 3;
     Point end_pos = block2_pos;
     end_pos[2] += 0.3;
     Point start_pos;
     start_pos = block1_pos;
-//    start_pos[2] += 0.1;
+//    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
     auto ret = path_planner.plan(start_pos, end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, ctrl_cnt);
     std::cout << "ret: " << ret << std::endl;
@@ -248,6 +235,10 @@ int main(int argc, char** argv) {
 //        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
     }
 
+    auto ctrls = path_planner.get_ctrl_pts();
+    std::cout << "ctrls.cols(): " << ctrls.cols() << std::endl;
+    std::cout << "ctrls.rows(): " << ctrls.rows() << std::endl;
+
     // run main loop, target real-time simulation and 60 fps rendering
     while (!glfwWindowShouldClose(window)) {
         // advance interactive simulation for 1/60 sec
@@ -275,6 +266,13 @@ int main(int argc, char** argv) {
 
 //      draw_line(&scn, block1_pos, block2_pos);
         draw_path(&scn, pts);
+
+//        Point p = Point(1,2,3);
+//        draw_sphere(&scn, p, 1);
+        for(int i = 0; i < ctrls.cols(); i++){
+            Point c = ctrls.col(i);
+            draw_sphere(&scn, c, 0.03);
+        }
         mjr_render(viewport, &scn, &con);
 //        return 0;
 
@@ -315,7 +313,7 @@ int main(int argc, char** argv) {
 
      for(int i = 0; i < num_points; i++) {
          double u = static_cast<double>(i)/9.;
-        Point p = path_planner.evaluate(init_spline, u);
+        Point p = path_planner.evaluate(u);
       std::cout << "Point " << i << ": " << p.transpose() << std::endl;
         param[i] = u;
         data.block<3,1>(0,i) = p;
