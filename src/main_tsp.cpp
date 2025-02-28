@@ -234,11 +234,11 @@ int main(int argc, char** argv) {
     std::cout << "duration [us]: " << duration/1e3 << std::endl;
     Point limits;
     limits << 1,1,1;
-    double sigma = 0.2;
-    int sample_cnt = 1;
-    int check_cnt = 10;
-    int gd_iterations = 3;
-    int ctrl_cnt = 3;
+    double sigma = 0.1;
+    int sample_cnt = 10;
+    int check_cnt = 50;
+    int gd_iterations = 10;
+    int ctrl_cnt = 3; // THIS MUST BE FIXED!!
     Point end_pos = block2_pos;
     end_pos[2] += 0.3;
     Point start_pos;
@@ -282,7 +282,7 @@ int main(int argc, char** argv) {
     glfwSetMouseButtonCallback(window, mouse_button);
     glfwSetScrollCallback(window, scroll);
 
-    const int pts_cnt = 50;
+    const int pts_cnt = 10;
 
 
     auto ctrls = path_planner.get_ctrl_pts();

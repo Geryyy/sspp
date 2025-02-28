@@ -318,10 +318,10 @@ namespace tsp
 
             for (int i = 0; i < sample_count - 1; i++)
             {
-                Point mean = Point::Zero();
                 Point stddev = Point::Ones() * sigma;
-                Point noisy_via_pt = get_random_point(mean, stddev);
+                Point noisy_via_pt = get_random_point(init_via_pt, stddev);
                 via_point_candidates.push_back(noisy_via_pt);
+                std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
             }
 
             /* optimize candidates */
@@ -337,7 +337,7 @@ namespace tsp
 
                     /* gradient descent steps */
                     Point diff_delta = Point::Ones() * 1e-2;
-                    constexpr double step_size = 1e-2;
+                    constexpr double step_size = 1e-3;
                     GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
                     const auto via_pt_opt = graddesc.optimize(via_candidate);
 
