@@ -35,14 +35,14 @@ namespace tsp
         }
     };
 
-    struct GradientStep{
-        Point via_point;
-        Point gradient;
-    };
 
-    struct PathCandidate{
+
+    struct PathCandidate
+    {
+        Point via_point;
         std::vector<GradientStep> gradient_steps;
     };
+
 
     class TaskSpacePlanner
     {
@@ -57,7 +57,6 @@ namespace tsp
         std::vector<Point> via_points;
         // std::vector<CollisionPoint> coll_pts;
         Point end_derivative_;
-
 
     public:
         TaskSpacePlanner(mjModel *model)
@@ -116,7 +115,7 @@ namespace tsp
             Eigen::MatrixXd derivatives = end_derivative;
             Eigen::Vector<int, 1> deriv_ind(num_points - 1);
             Spline spline = SplineFitter::InterpolateWithDerivatives(via_mat, derivatives, deriv_ind, kSplineDegree,
-                                                                    u_knots);
+                                                                     u_knots);
             return spline;
         }
 
@@ -136,14 +135,15 @@ namespace tsp
             return spline;
         }
 
-        Point get_random_point(const Point& mean, const Point& stddev) {
+        Point get_random_point(const Point &mean, const Point &stddev)
+        {
             static std::random_device rd;
             static std::mt19937 gen(rd());
-        
+
             std::normal_distribution<double> dist_x(mean.x(), stddev.x());
             std::normal_distribution<double> dist_y(mean.y(), stddev.y());
             std::normal_distribution<double> dist_z(mean.z(), stddev.z());
-        
+
             return Point(dist_x(gen), dist_y(gen), dist_z(gen));
         }
 
@@ -299,11 +299,11 @@ namespace tsp
         }
 
         std::vector<PathCandidate> plan(const Point &start,
-            const Point &end, const Point &end_derivative, double sigma, const Point &limits,
-            const int sample_count = 50,
-            const int check_points = 50,
-            const int gd_iterations = 10,
-            const int init_points = 3)
+                                        const Point &end, const Point &end_derivative, double sigma, const Point &limits,
+                                        const int sample_count = 50,
+                                        const int check_points = 50,
+                                        const int gd_iterations = 10,
+                                        const int init_points = 3)
         {
             std::vector<PathCandidate> path_candidates;
             // coll_pts.clear();
@@ -316,7 +316,8 @@ namespace tsp
             std::vector<Point> via_point_candidates;
             via_point_candidates.push_back(init_via_pt);
 
-            for(int i = 0; i < sample_count - 1; i++){
+            for (int i = 0; i < sample_count - 1; i++)
+            {
                 Point mean = Point::Zero();
                 Point stddev = Point::Ones() * sigma;
                 Point noisy_via_pt = get_random_point(mean, stddev);
@@ -327,8 +328,6 @@ namespace tsp
             {
                 for (int i = 0; i < sample_count; ++i)
                 {
-                    PathCandidate candidate;
-
                     Point via_candidate = via_point_candidates[i];
                     // Lambda function for collision cost
                     auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
@@ -337,27 +336,12 @@ namespace tsp
                     };
 
                     /* gradient descent steps */
-                    for(int k = 0; k < gd_iterations; k++){
+                    Point diff_delta = Point::Ones() * 1e-2;
+                    constexpr double step_size = 1e-2;
+                    GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
+                    const auto via_pt_opt = graddesc.optimize(via_candidate);
 
-                        Point delta = Point::Ones() * 1e-2;
-                        Gradient grad(collision_cost_lambda, delta, via_candidate);
-                        Point coll_gradient = grad.compute();
-
-                        GradientStep gradient_descent_step(via_candidate, coll_gradient);
-                        candidate.gradient_steps.push_back(gradient_descent_step);
-                        
-                        std::cout << "gd step " << k << " via_pt: "<<via_candidate.transpose() << " gradient: " << coll_gradient.transpose() << std::endl;
-
-                        constexpr double step_size = 1e-2;
-                        via_candidate -= step_size*coll_gradient;
-
-                        
-                        // if (!checkCollision(path_spline_, check_points, data_))
-                        // {
-                        //     std::cout << "ready!" << std::endl;
-                        // }
-                    }
-
+                    PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps());
                     path_candidates.push_back(candidate);
                 }
             }
@@ -365,10 +349,12 @@ namespace tsp
             return path_candidates;
         }
 
-        std::vector<Point> get_path_pts(const Spline& spline, const int pts_cnt=10) {
+        std::vector<Point> get_path_pts(const Spline &spline, const int pts_cnt = 10)
+        {
             std::vector<Point> pts;
-            for(int i = 0; i < pts_cnt; i++){
-                double u = static_cast<double>(i)/pts_cnt;
+            for (int i = 0; i < pts_cnt; i++)
+            {
+                double u = static_cast<double>(i) / pts_cnt;
                 auto pt = evaluate(u, spline);
                 pts.push_back(pt);
                 //        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
