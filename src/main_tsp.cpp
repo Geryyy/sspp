@@ -12,8 +12,8 @@
 #include <mujoco/mujoco.h>
 
 // Path to the XML file for the MuJoCo model
-const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
-//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
+// const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
+const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -115,6 +115,9 @@ void draw_sphere(mjvScene* scn, Eigen::Vector3d pos, float size=0.1, float* rgba
         rgba = line_rgba;
     }
 
+    if(scn->ngeom >= scn->maxgeom-1)
+        throw std::runtime_error("ngeom > maxgeom!");
+
     scn->ngeom++;
     mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
     mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), pos.data(), NULL, rgba);
@@ -144,6 +147,9 @@ void draw_arrow(mjvScene* scn, Eigen::Vector3d pos, Eigen::Vector3d gradient, fl
         rgba = line_rgba;
     }
 
+    if(scn->ngeom >= scn->maxgeom-1)
+        throw std::runtime_error("ngeom > maxgeom!");
+
     scn->ngeom++;
     mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
     mjv_initGeom(geom_ptr, mjGEOM_ARROW, line_size.data(), pos.data(), rotmat.data(), rgba);
@@ -159,7 +165,7 @@ void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=5.0)
         Eigen::Vector3d end_pos = pts[i];
 
         if(scn->ngeom >= scn->maxgeom-1)
-            break;
+            throw std::runtime_error("ngeom > maxgeom!");
 
         scn->ngeom++;
         mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
@@ -223,15 +229,15 @@ int main(int argc, char** argv) {
     Point end_derivative;
     end_derivative << 0,0,-1;
     exec_timer.tic();
-    auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
+    init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
     auto duration = exec_timer.toc();
     std::cout << "duration [us]: " << duration/1e3 << std::endl;
-    std::cout << "Error code: " << err_code << std::endl;
     Point limits;
     limits << 1,1,1;
     double sigma = 0.2;
     int sample_cnt = 1;
     int check_cnt = 10;
+    int gd_iterations = 3;
     int ctrl_cnt = 3;
     Point end_pos = block2_pos;
     end_pos[2] += 0.3;
@@ -239,10 +245,14 @@ int main(int argc, char** argv) {
     start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
-    auto ret = path_planner.plan(start_pos, end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, ctrl_cnt);
-    std::cout << "ret: " << ret << std::endl;
+    auto path_candidates = path_planner.plan(start_pos,
+        end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
 
-    Point coll_gradient = path_planner.get_coll_gradient();
+    std::cout << "nr of path_candidates: " << path_candidates.size() << std::endl;
+    for(int i = 0; i < path_candidates.size(); i++) {
+        std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
+    }
+
     auto via_pts = path_planner.get_via_pts();
     float via_color[] = {0,1,1,1};
 
@@ -252,7 +262,7 @@ int main(int argc, char** argv) {
     }
 
     // create window, make OpenGL context current, request v-sync
-    GLFWwindow* window = glfwCreateWindow(1200, 900, "Demo", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1200, 900, "Get to the Choppa!", NULL, NULL);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
@@ -273,13 +283,7 @@ int main(int argc, char** argv) {
     glfwSetScrollCallback(window, scroll);
 
     const int pts_cnt = 50;
-    std::vector<Point> pts;
-    for(int i = 0; i < pts_cnt; i++){
-        double u = static_cast<double>(i)/pts_cnt;
-        auto pt = path_planner.evaluate(u);
-        pts.push_back(pt);
-//        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
-    }
+
 
     auto ctrls = path_planner.get_ctrl_pts();
     std::cout << "ctrls.cols(): " << ctrls.cols() << std::endl;
@@ -303,7 +307,7 @@ int main(int argc, char** argv) {
         // update scene and render
         mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
 
-        draw_path(&scn, pts);
+        // draw_path(&scn, pts);
 
         // control points
         for(int i = 0; i < ctrls.cols(); i++){
@@ -317,7 +321,23 @@ int main(int argc, char** argv) {
         }
 
         // collision gradient
-        draw_arrow(&scn, via_pts[1], coll_gradient, 0.5);
+        // draw_arrow(&scn, via_pts[1], coll_gradient, 0.5);
+
+        // draw path candidates
+        for(const auto& candidate : path_candidates) {
+            for(const auto& step : candidate.gradient_steps) {
+                Point via_pt = step.via_point;
+                Point coll_grad = step.gradient;
+                tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
+                auto pts = path_planner.get_path_pts(spline, pts_cnt);
+                draw_path(&scn, pts, 0.1);
+                draw_sphere(&scn, via_pt, 0.03, via_color);
+                draw_arrow(&scn, via_pt, coll_grad, 0.5);
+            }
+        }
+
+        
+
         mjr_render(viewport, &scn, &con);
 
         // swap OpenGL buffers (blocking call due to v-sync)
