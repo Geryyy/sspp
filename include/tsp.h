@@ -163,6 +163,15 @@ namespace tsp {
             return;
         }
 
+        double get_geom_center_distance(int contact_id, mjData* data){
+            int geom1_id = data->contact[contact_id].geom1;
+            int geom2_id = data->contact[contact_id].geom2;
+            Point geom1_center, geom2_center;
+            geom1_center << data->geom_xpos[geom1_id*3], data->geom_xpos[geom1_id*3+1], data->geom_xpos[geom1_id*3+2];
+            geom2_center << data->geom_xpos[geom2_id*3], data->geom_xpos[geom2_id*3+1], data->geom_xpos[geom2_id*3+2];
+            return (geom2_center - geom1_center).norm();
+        }
+
         bool checkCollision(const Spline &spline, int num_samples, mjData *data) {
             for (int i = 0; i <= num_samples; ++i) {
                 double u = static_cast<double>(i) / num_samples;
@@ -216,8 +225,10 @@ namespace tsp {
 
                 for (int i = 0; i < data->ncon; i++) {
                     double col_dist = data->contact[i].dist;
+                    double center_dist = get_geom_center_distance(i, data);
                     if (col_dist < -1e-3) {
-                        cost += -col_dist;
+//                        cost += -col_dist;
+                        cost += center_dist;
                     }
                 }
             }

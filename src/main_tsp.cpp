@@ -12,8 +12,8 @@
 #include <mujoco/mujoco.h>
 
 // Path to the XML file for the MuJoCo model
-//const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
+const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
+//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -222,7 +222,10 @@ int main(int argc, char** argv) {
     tsp::Spline init_spline;
     Point end_derivative;
     end_derivative << 0,0,-1;
+    exec_timer.tic();
     auto err_code = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
+    auto duration = exec_timer.toc();
+    std::cout << "duration [us]: " << duration/1e3 << std::endl;
     std::cout << "Error code: " << err_code << std::endl;
     Point limits;
     limits << 1,1,1;
