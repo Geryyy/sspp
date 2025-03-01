@@ -43,6 +43,9 @@ struct GradientStep
     Eigen::Vector3d gradient;
 };
 
+
+/* TODO: optimizer status enum and store it in candidate obj */
+
 // Gradient Descent class with Barzilai-Borwein step size
 class GradientDescent
 {
@@ -52,8 +55,10 @@ public:
     GradientDescent(double step_size, int iterations, CostFunction cost_function, const Eigen::Vector3d &delta)
         : iterations_(iterations), cost_function_(cost_function), delta_(delta), steps(), init_step_size_(step_size) {}
 
-    Eigen::Vector3d optimize(Eigen::Vector3d via_candidate)
+    bool optimize(Eigen::Vector3d via_candidate)
     {
+        bool converged = false;
+
         Eigen::Vector3d prev_x = via_candidate;
         Gradient prev_grad(cost_function_, delta_, via_candidate);
         Eigen::Vector3d prev_gradient = prev_grad.compute();
@@ -62,14 +67,14 @@ public:
         for (int k = 0; k < iterations_; ++k)
         {
             Gradient grad(cost_function_, delta_, via_candidate);
-            Eigen::Vector3d coll_gradient = grad.compute();
+            Eigen::Vector3d gradient = grad.compute();
 
 
             // Compute BB step size after the first iteration
             if (k > 0)
             {
                 Eigen::Vector3d s = via_candidate - prev_x;        // s_k = x_k - x_{k-1}
-                Eigen::Vector3d y = coll_gradient - prev_gradient; // y_k = ∇f_k - ∇f_{k-1}
+                Eigen::Vector3d y = gradient - prev_gradient; // y_k = ∇f_k - ∇f_{k-1}
 
                 double denom = y.dot(y);
                 if (denom > 1e-10)
@@ -79,33 +84,45 @@ public:
             }
 
             // Store step data
-            GradientStep step(via_candidate, coll_gradient);
+            GradientStep step(via_candidate, gradient);
             steps.push_back(step);
             
             // std::cout << "gd step " << k << " via_pt: " << via_candidate.transpose()
-            // << " gradient: " << coll_gradient.transpose()
+            // << " gradient: " << gradient.transpose()
             // << " step_size: " << step_size << std::endl;
             
             // abort if gradient vanishes --> no collision
-            if(coll_gradient.norm() < 1e-6){
+            if(gradient.norm() < 1e-6){
                 // no collision
                 // std::cerr << "gradient vanishes - abort" << std::endl;
-                // std::cerr << "coll_gradient.norm: " << coll_gradient.norm() << std::endl;
+                // std::cerr << "gradient.norm: " << gradient.norm() << std::endl;
+                converged = true;
+                std::cout << "graddesc converged!" << std::endl;
                 break;
             }
 
             // abort if below ground
             if(via_candidate[2] < 0){
+                std::cout << "graddesc below floor!" << std::endl;
                 break;
             }
             
 
             // Gradient descent update
             prev_x = via_candidate;
-            prev_gradient = coll_gradient;
-            via_candidate += step_size * coll_gradient;
+            prev_gradient = gradient;
+            via_candidate += step_size * gradient;
+
+            if(k==iterations_-1){
+                std::cout << "graddesc max steps!" << std::endl;
+            }
         }
-        return via_candidate;
+        result = via_candidate;
+        return converged;
+    }
+
+    Eigen::Vector3d get_result(){
+        return result;
     }
 
     std::vector<GradientStep> get_gradient_descent_steps()
@@ -119,6 +136,7 @@ private:
     CostFunction cost_function_;
     Eigen::Vector3d delta_;
     std::vector<GradientStep> steps;
+    Eigen::Vector3d result;
 
 };
 

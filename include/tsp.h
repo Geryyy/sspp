@@ -43,7 +43,7 @@ namespace tsp
         std::vector<GradientStep> gradient_steps;
     };
 
-
+    /* TODO: add start_derivative_ */
     class TaskSpacePlanner
     {
     private:
@@ -220,6 +220,8 @@ namespace tsp
             return false;
         }
 
+        /* TODO: make moveable object selectable --> adapt qpos range to update */
+
         double collision_cost(const Point via_pt, int eval_cnt, mjData *data, bool use_center_dist = true)
         {
             Spline spline = path_from_via_pt(via_pt);
@@ -339,10 +341,15 @@ namespace tsp
                     Point diff_delta = Point::Ones() * 1e-2;
                     constexpr double step_size = 1e-3;
                     GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
-                    const auto via_pt_opt = graddesc.optimize(via_candidate);
-
-                    PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps());
-                    path_candidates.push_back(candidate);
+                    auto opt_converged = graddesc.optimize(via_candidate);
+                    const auto via_pt_opt = graddesc.get_result();
+                    
+                    std::cout << "opt converged: " << opt_converged << std::endl;
+                    /* TODO: add debug function to visualize failed candidates instead of true || */
+                    if(true || opt_converged){
+                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps());
+                        path_candidates.push_back(candidate);
+                    }
                 }
             }
 
@@ -354,7 +361,7 @@ namespace tsp
             std::vector<Point> pts;
             for (int i = 0; i < pts_cnt; i++)
             {
-                double u = static_cast<double>(i) / pts_cnt;
+                double u = static_cast<double>(i) / (pts_cnt-1);
                 auto pt = evaluate(u, spline);
                 pts.push_back(pt);
                 //        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;

@@ -13,7 +13,8 @@
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
+// const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
+const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -156,9 +157,12 @@ void draw_arrow(mjvScene* scn, Eigen::Vector3d pos, Eigen::Vector3d gradient, fl
 }
 
 
-void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=5.0) {
+void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=0.5, float* rgba = nullptr) {
     Eigen::Vector3d line_size = Eigen::Vector3d::Ones()*width;
     float line_rgba[] = {1,1,0,1};
+    if (!rgba) {
+        rgba = line_rgba;
+    }
 
     for(int i = 1; i < pts.size(); i++){
         Eigen::Vector3d start_pos = pts[i-1];
@@ -169,7 +173,7 @@ void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=5.0)
 
         scn->ngeom++;
         mjvGeom *geom_ptr = &scn->geoms[scn->ngeom - 1];
-        mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), start_pos.data(), NULL, line_rgba);
+        mjv_initGeom(geom_ptr, mjGEOM_SPHERE, line_size.data(), start_pos.data(), NULL, rgba);
         mjv_connector(geom_ptr, mjGEOM_LINE, width, start_pos.data(), end_pos.data());
     }
 
@@ -235,14 +239,15 @@ int main(int argc, char** argv) {
     Point limits;
     limits << 1,1,1;
     double sigma = 0.1;
-    int sample_cnt = 10;
-    int check_cnt = 50;
-    int gd_iterations = 10;
-    int ctrl_cnt = 3; // THIS MUST BE FIXED!!
+    int sample_cnt = 3;
+    int check_cnt = 100;
+    int gd_iterations = 20;
+    int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
     Point end_pos = block2_pos;
-    end_pos[2] += 0.3;
+    end_pos[2] += 0.01;
     Point start_pos;
-    start_pos = block1_pos;
+    start_pos << 0.5,0.5,0.5;
+    // start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
     auto path_candidates = path_planner.plan(start_pos,
@@ -253,8 +258,18 @@ int main(int argc, char** argv) {
         std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
     }
 
+    // TEST purpose
+    for(int i = 0; i <3; i++) {
+        d->qpos[i] = end_pos[i];
+    }
+
     auto via_pts = path_planner.get_via_pts();
     float via_color[] = {0,1,1,1};
+    float start_color[] = {0,1,0,1};
+    float end_color[] = {1,0,0,1};
+    float path_color[] = {0,1,1,1};
+    float graddesc_color[] = {0,0.7,0.5,0.5};
+    float graddesc_via_color[] = {0,1,1,0.5};
 
     // init GLFW
     if (!glfwInit()) {
@@ -283,6 +298,8 @@ int main(int argc, char** argv) {
     glfwSetScrollCallback(window, scroll);
 
     const int pts_cnt = 10;
+    bool show_valid_path = true;
+    bool show_graddesc_steps = true;
 
 
     auto ctrls = path_planner.get_ctrl_pts();
@@ -310,29 +327,44 @@ int main(int argc, char** argv) {
         // draw_path(&scn, pts);
 
         // control points
-        for(int i = 0; i < ctrls.cols(); i++){
-            Point c = ctrls.col(i);
-            draw_sphere(&scn, c, 0.03);
-        }
+        // for(int i = 0; i < ctrls.cols(); i++){
+        //     Point c = ctrls.col(i);
+        //     draw_sphere(&scn, c, 0.03);
+        // }
 
         // via points
-        for(auto p : via_pts) {
-            draw_sphere(&scn,p,0.03, via_color);
-        }
+        // for(auto p : via_pts) {
+        //     draw_sphere(&scn,p,0.03, via_color);
+        // }
+
+        draw_sphere(&scn,via_pts[0],0.03, start_color);
+        // draw_sphere(&scn,p,0.03, via_color);
+        draw_sphere(&scn,via_pts[2],0.03, end_color);
 
         // collision gradient
         // draw_arrow(&scn, via_pts[1], coll_gradient, 0.5);
 
         // draw path candidates
         for(const auto& candidate : path_candidates) {
-            for(const auto& step : candidate.gradient_steps) {
-                Point via_pt = step.via_point;
-                Point coll_grad = step.gradient;
+
+            if(show_valid_path){
+                Point via_pt = candidate.via_point;
                 tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
                 auto pts = path_planner.get_path_pts(spline, pts_cnt);
-                draw_path(&scn, pts, 0.1);
+                draw_path(&scn, pts, 0.2, path_color);
                 draw_sphere(&scn, via_pt, 0.03, via_color);
-                draw_arrow(&scn, via_pt, coll_grad, 0.5);
+            }
+
+            if(show_graddesc_steps){
+                for(const auto& step : candidate.gradient_steps) {
+                    Point via_pt = step.via_point;
+                    Point coll_grad = step.gradient;
+                    tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
+                    auto pts = path_planner.get_path_pts(spline, pts_cnt);
+                    draw_path(&scn, pts, 0.1, graddesc_color);
+                    draw_sphere(&scn, via_pt, 0.03, graddesc_via_color);
+                    draw_arrow(&scn, via_pt, coll_grad, 0.2);
+                }
             }
         }
 
