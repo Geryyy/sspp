@@ -7,7 +7,7 @@
 #include "utility.h"
 #include <cstdio>
 #include <cstring>
-
+#include <thread>
 #include <GLFW/glfw3.h>
 #include <mujoco/mujoco.h>
 
@@ -42,13 +42,72 @@ double lastx = 0;
 double lasty = 0;
 
 
+bool vis_best_path = true;
+bool vis_succ_candidates = false;
+bool vis_failed_candidates = false;
+bool vis_grad_descent = false;
+bool vis_animate_block = false;
+
+std::vector<tsp::PathCandidate> path_candidates;
+std::vector<tsp::PathCandidate> failed_candidates;
+
+void print_candidates_statistics(const std::vector<tsp::PathCandidate>& candidates, const std::string& label) {
+    std::cout << "number of " << label << " candidates: " << candidates.size() << std::endl;
+    for(const auto& candidate : candidates) {
+        std::cout << "candidate.gds_steps: " << candidate.gradient_steps.size() << " status: " << SolverStatustoString(candidate.status) << std::endl;
+    }
+}
+
+void print_menue() {
+    std::cout << "backspace\treset" << std::endl;
+    std::cout << "Q\tvis_best_path" << std::endl;
+    std::cout << "W\tvis_succ_candidates" << std::endl;
+    std::cout << "E\tvis_failed_candidates" << std::endl;
+    std::cout << "R\tvis_grad_descent" << std::endl;
+    std::cout << "A\tanimate block" << std::endl;
+}
+
 // keyboard callback
 void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
     // backspace: reset simulation
     if (act==GLFW_PRESS && key==GLFW_KEY_BACKSPACE) {
         mj_resetData(m, d);
         mj_forward(m, d);
+        std::cout << "reset pressed" << std::endl;
     }
+
+    // visualize best path
+    if (act==GLFW_PRESS && key==GLFW_KEY_Q) {
+        vis_best_path = !vis_best_path;
+        std::cout << "vis_best_path: " << vis_best_path << std::endl;
+    }
+
+    // visualize succesul path candidates
+    if (act==GLFW_PRESS && key==GLFW_KEY_W) {
+        vis_succ_candidates = !vis_succ_candidates;
+        std::cout << "vis_succ_candidates: " << vis_succ_candidates << std::endl;
+        print_candidates_statistics(path_candidates, "succesful");
+    }
+
+    // visualize failed path candidates
+    if (act==GLFW_PRESS && key==GLFW_KEY_E) {
+        vis_failed_candidates = !vis_failed_candidates;
+        std::cout << "vis_failed_candidates: " << vis_failed_candidates << std::endl;
+        print_candidates_statistics(failed_candidates, "failed");
+    }
+
+    // visualize gradient descent steps
+    if (act==GLFW_PRESS && key==GLFW_KEY_R) {
+        vis_grad_descent = !vis_grad_descent;
+        std::cout << "vis_grad_descent: " << vis_grad_descent << std::endl;
+    }
+
+    // visualize animation of block along path
+    if (act==GLFW_PRESS && key==GLFW_KEY_A) {
+        vis_animate_block = !vis_animate_block;
+        std::cout << "vis_animate_block: " << vis_animate_block << std::endl;
+    }
+
 }
 
 
@@ -197,35 +256,25 @@ int main(int argc, char** argv) {
         throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
     }
 
-    if(!m) {
-        std::cerr << "Error reading mujoco XML!" << std::endl;
-        return -1;
-    }
     d = mj_makeData(m);
 
+    std::cout << "Taskspace Planner" << std::endl;
     std::cout << "DoFs: " << m->nq << std::endl;
-    std::cout << "Jacobian sparse: " << mj_isSparse(m) << std::endl;
-    std::cout << "jacobian dimension: " << d->nJ << std::endl;
+    // std::cout << "Jacobian sparse: " << mj_isSparse(m) << std::endl;
+    // std::cout << "jacobian dimension: " << d->nJ << std::endl;
 
+    print_menue();
 
     mj_forward(m, d);
     mj_collision(m,d);
-//
-//    // get the number of contacts
-//    std::cout << "Number of contacts: " << d->ncon << std::endl;
-//
-//    // iterate over all contacts
-//    for(int i=0; i<d->ncon; i++) {
-//        std::cout << "Contact " << i << ": " << d->contact[i].dist << std::endl;
-//    }
 
     auto block1_pos = get_body_position(m, d, "block1");
     auto block2_pos = get_body_position(m, d, "block2");
-    std::cout << "block1_pos: " << block1_pos.transpose() << std::endl;
-    std::cout << "block2_pos: " << block2_pos.transpose() << std::endl;
+    // std::cout << "block1_pos: " << block1_pos.transpose() << std::endl;
+    // std::cout << "block2_pos: " << block2_pos.transpose() << std::endl;
 
     // static sampling path planner
-    std::cout << "Taskspace Planner" << std::endl;
+
     using TSP = tsp::TaskSpacePlanner;
     TSP path_planner(m);
     using Point = tsp::Point;
@@ -250,13 +299,16 @@ int main(int argc, char** argv) {
     // start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
-    auto path_candidates = path_planner.plan(start_pos,
+    path_candidates = path_planner.plan(start_pos,
         end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
 
-    std::cout << "nr of path_candidates: " << path_candidates.size() << std::endl;
+    failed_candidates = path_planner.get_failed_path_candidates();
+
+    std::cout << "nr of succesful path candidates: " << path_candidates.size() << std::endl;
     for(int i = 0; i < path_candidates.size(); i++) {
         std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
     }
+    std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
     // TEST purpose
     for(int i = 0; i <3; i++) {
@@ -270,6 +322,12 @@ int main(int argc, char** argv) {
     float path_color[] = {0,1,1,1};
     float graddesc_color[] = {0,0.7,0.5,0.5};
     float graddesc_via_color[] = {0,1,1,0.5};
+
+    float failed_via_color[] = {1.0, 0.5, 0.5, 0.5};       // More red, more transparent
+    float failed_path_color[] = {1.0, 0.5, 0.5, 0.5};      // Same as via for consistency
+    float failed_graddesc_color[] = {0.8, 0.3, 0.3, 0.3};  // Darker red, more transparent
+    float failed_graddesc_via_color[] = {1.0, 0.4, 0.4, 0.3}; // Slightly more red than graddesc
+
 
     // init GLFW
     if (!glfwInit()) {
@@ -298,24 +356,17 @@ int main(int argc, char** argv) {
     glfwSetScrollCallback(window, scroll);
 
     const int pts_cnt = 10;
-    bool show_valid_path = true;
-    bool show_graddesc_steps = true;
-
-
-    auto ctrls = path_planner.get_ctrl_pts();
-    std::cout << "ctrls.cols(): " << ctrls.cols() << std::endl;
-    std::cout << "ctrls.rows(): " << ctrls.rows() << std::endl;
 
     // run main loop, target real-time simulation and 60 fps rendering
     while (!glfwWindowShouldClose(window)) {
-        // advance interactive simulation for 1/60 sec
-        //  Assuming MuJoCo can simulate faster than real-time, which it usually can,
-        //  this loop will finish on time for the next frame to be rendered at 60 fps.
-        //  Otherwise add a cpu timer and exit this loop when it is time to render.
         mjtNum simstart = d->time;
-        while (d->time - simstart < 1.0/60.0) {
-            mj_step(m, d);
-        }
+        // while (d->time - simstart < 1.0/60.0) {
+        //     mj_step(m, d);
+        // }
+        mj_forward(m, d);
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        d->time += 1e-2;
+
 
         // get framebuffer viewport
         mjrRect viewport = {0, 0, 0, 0};
@@ -324,51 +375,71 @@ int main(int argc, char** argv) {
         // update scene and render
         mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
 
-        // draw_path(&scn, pts);
-
-        // control points
-        // for(int i = 0; i < ctrls.cols(); i++){
-        //     Point c = ctrls.col(i);
-        //     draw_sphere(&scn, c, 0.03);
-        // }
-
-        // via points
-        // for(auto p : via_pts) {
-        //     draw_sphere(&scn,p,0.03, via_color);
-        // }
-
         draw_sphere(&scn,via_pts[0],0.03, start_color);
-        // draw_sphere(&scn,p,0.03, via_color);
         draw_sphere(&scn,via_pts[2],0.03, end_color);
 
-        // collision gradient
-        // draw_arrow(&scn, via_pts[1], coll_gradient, 0.5);
+        if(vis_best_path) {
+            auto pts = path_planner.get_path_pts(pts_cnt);
+            draw_path(&scn, pts, 0.2, path_color);
+            // draw_sphere(&scn, via_pt, 0.03, via_color);
+        }
 
-        // draw path candidates
-        for(const auto& candidate : path_candidates) {
-
-            if(show_valid_path){
+        // draw successful path candidates
+        if(vis_succ_candidates) {
+            for(const auto& candidate : path_candidates) {
                 Point via_pt = candidate.via_point;
                 tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
                 auto pts = path_planner.get_path_pts(spline, pts_cnt);
                 draw_path(&scn, pts, 0.2, path_color);
                 draw_sphere(&scn, via_pt, 0.03, via_color);
-            }
 
-            if(show_graddesc_steps){
-                for(const auto& step : candidate.gradient_steps) {
-                    Point via_pt = step.via_point;
-                    Point coll_grad = step.gradient;
-                    tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
-                    auto pts = path_planner.get_path_pts(spline, pts_cnt);
-                    draw_path(&scn, pts, 0.1, graddesc_color);
-                    draw_sphere(&scn, via_pt, 0.03, graddesc_via_color);
-                    draw_arrow(&scn, via_pt, coll_grad, 0.2);
+                if(vis_grad_descent){
+                    for(const auto& step : candidate.gradient_steps) {
+                        Point via_pt = step.via_point;
+                        Point coll_grad = step.gradient;
+                        tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
+                        auto pts = path_planner.get_path_pts(spline, pts_cnt);
+                        draw_path(&scn, pts, 0.1, graddesc_color);
+                        draw_sphere(&scn, via_pt, 0.03, graddesc_via_color);
+                        draw_arrow(&scn, via_pt, coll_grad, 0.2);
+                    }
                 }
             }
         }
 
-        
+        // draw failed path candidates
+        // draw path candidates
+        if(vis_failed_candidates) {
+            for(const auto& candidate : failed_candidates) {
+                Point via_pt = candidate.via_point;
+                tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
+                auto pts = path_planner.get_path_pts(spline, pts_cnt);
+                draw_path(&scn, pts, 0.2, failed_path_color);
+                draw_sphere(&scn, via_pt, 0.03, failed_via_color);
+
+                if(vis_grad_descent){
+                    for(const auto& step : candidate.gradient_steps) {
+                        Point via_pt = step.via_point;
+                        Point coll_grad = step.gradient;
+                        tsp::Spline spline = path_planner.path_from_via_pt(via_pt);
+                        auto pts = path_planner.get_path_pts(spline, pts_cnt);
+                        draw_path(&scn, pts, 0.1, failed_graddesc_color);
+                        draw_sphere(&scn, via_pt, 0.03, failed_graddesc_via_color);
+                        draw_arrow(&scn, via_pt, coll_grad, 0.2);
+                    }
+                }
+            }
+        }
+
+        /* animate block */
+        if(vis_animate_block) {
+            double u = std::fmod(d->time/10., 1.0);
+            Point qpos = path_planner.evaluate(u);
+            for (int j = 0; j < 3; ++j)
+            {
+                d->qpos[j] = qpos[j];
+            }
+        }
 
         mjr_render(viewport, &scn, &con);
 
@@ -388,28 +459,4 @@ int main(int argc, char** argv) {
     mj_deleteModel(m);
     return 0;
 
-
-
-
-
-    // exec_timer.tic();
-    // auto success = path_planner.plan(Point::Zero(), Point::Ones(), 0.5, Point::Ones());
-    // std::cout << "Planning time: " << static_cast<double>(exec_timer.toc())*1e-3 << " us" << std::endl;
-    // std::cout << "Path found: " << success << std::endl;
-
-    constexpr int num_points = 10;
-    Eigen::VectorXd param(num_points);
-    Eigen::MatrixXd data(3,num_points);
-
-     for(int i = 0; i < num_points; i++) {
-         double u = static_cast<double>(i)/9.;
-        Point p = path_planner.evaluate(u);
-      std::cout << "Point " << i << ": " << p.transpose() << std::endl;
-        param[i] = u;
-        data.block<3,1>(0,i) = p;
-     }
-
-    exportToCSV("tsp.csv", param, data);
-
-    return 0;
 }

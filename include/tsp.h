@@ -41,6 +41,7 @@ namespace tsp
     {
         Point via_point;
         std::vector<GradientStep> gradient_steps;
+        SolverStatus status;
     };
 
     /* TODO: add start_derivative_ */
@@ -57,6 +58,10 @@ namespace tsp
         std::vector<Point> via_points;
         // std::vector<CollisionPoint> coll_pts;
         Point end_derivative_;
+
+        // statistics
+        std::vector<PathCandidate> successful_candidates_;
+        std::vector<PathCandidate> failed_candidates_;
 
     public:
         TaskSpacePlanner(mjModel *model)
@@ -308,6 +313,7 @@ namespace tsp
                                         const int init_points = 3)
         {
             std::vector<PathCandidate> path_candidates;
+            std::vector<PathCandidate> failed_candidates;
             // coll_pts.clear();
             /* initialize straight line */
             Spline init_spline = initializePath(start, end, end_derivative, init_points);
@@ -318,12 +324,13 @@ namespace tsp
             std::vector<Point> via_point_candidates;
             via_point_candidates.push_back(init_via_pt);
 
+
             for (int i = 0; i < sample_count - 1; i++)
             {
                 Point stddev = Point::Ones() * sigma;
                 Point noisy_via_pt = get_random_point(init_via_pt, stddev);
                 via_point_candidates.push_back(noisy_via_pt);
-                std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
+                // std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
             }
 
             /* optimize candidates */
@@ -341,19 +348,41 @@ namespace tsp
                     Point diff_delta = Point::Ones() * 1e-2;
                     constexpr double step_size = 1e-3;
                     GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
-                    auto opt_converged = graddesc.optimize(via_candidate);
+                    auto solver_status = graddesc.optimize(via_candidate);
                     const auto via_pt_opt = graddesc.get_result();
                     
-                    std::cout << "opt converged: " << opt_converged << std::endl;
-                    /* TODO: add debug function to visualize failed candidates instead of true || */
-                    if(true || opt_converged){
-                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps());
+                    std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
+
+                    if(solver_status == SolverStatus::Converged){
+                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
                         path_candidates.push_back(candidate);
+                    }
+                    else {
+                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                        failed_candidates.push_back(candidate);
                     }
                 }
             }
 
+            successful_candidates_ = path_candidates;
+            failed_candidates_ = failed_candidates;
+
+            /* tighten succesful paths */
+
+            /* find best path */
+            if(!successful_candidates_.empty()) {
+                path_spline_ = path_from_via_pt(successful_candidates_[0].via_point);
+            }
+
             return path_candidates;
+        }
+
+        std::vector<PathCandidate> get_succesful_path_candidates() {
+            return successful_candidates_;
+        }
+
+        std::vector<PathCandidate> get_failed_path_candidates() {
+            return failed_candidates_;
         }
 
         std::vector<Point> get_path_pts(const Spline &spline, const int pts_cnt = 10)
@@ -363,6 +392,19 @@ namespace tsp
             {
                 double u = static_cast<double>(i) / (pts_cnt-1);
                 auto pt = evaluate(u, spline);
+                pts.push_back(pt);
+                //        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
+            }
+            return pts;
+        }
+
+        std::vector<Point> get_path_pts(const int pts_cnt = 10)
+        {
+            std::vector<Point> pts;
+            for (int i = 0; i < pts_cnt; i++)
+            {
+                double u = static_cast<double>(i) / (pts_cnt-1);
+                auto pt = evaluate(u);
                 pts.push_back(pt);
                 //        std::cout << "pt("<<u<<") " << pt.transpose() << std::endl;
             }
