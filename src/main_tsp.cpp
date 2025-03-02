@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
         end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
 
     auto duration = exec_timer.toc();
-    std::cout << "duration [ms]: " << duration/1e6 << std::endl;
+    std::cerr << "duration [ms]: " << duration/1e6 << std::endl;
 
     failed_candidates = path_planner.get_failed_path_candidates();
 
@@ -179,13 +179,13 @@ int main(int argc, char** argv) {
             // draw_sphere(&scn, via_pt, 0.03, via_color);
         }
 
-        visualize_candidates(vis_succ_candidates, vis_grad_descent, path_candidates, path_planner, scn, pts_cnt);
-
-        visualize_candidates(vis_failed_candidates, vis_grad_descent, failed_candidates, path_planner, scn, pts_cnt);
-
-        // draw failed path candidates
         // draw path candidates
-
+        visualize_candidates(vis_succ_candidates, vis_grad_descent,
+            path_candidates, path_planner, scn, pts_cnt, path_color, via_color, graddesc_color, graddesc_via_color);
+        // draw failed path candidates
+        visualize_candidates(vis_failed_candidates, vis_grad_descent,
+            failed_candidates, path_planner, scn, pts_cnt, failed_path_color, failed_via_color,
+            failed_graddesc_color, failed_graddesc_via_color);
 
         /* animate block */
         if(vis_animate_block) {

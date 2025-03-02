@@ -26,6 +26,8 @@ void draw_arrow(mjvScene* scn, Eigen::Vector3d pos, Eigen::Vector3d gradient, fl
 void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width=0.5, float* rgba = nullptr);
 
 void visualize_candidates(bool vis_candidates, bool vis_grad_desc,
-    const std::vector<tsp::PathCandidate>& candidates, tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt);
+    const std::vector<tsp::PathCandidate>& candidates,
+    tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt,
+    float* path_color, float* via_color, float* graddesc_color, float* graddesc_via_color);
 
 #endif //VISU_H

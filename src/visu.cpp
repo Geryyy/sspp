@@ -81,7 +81,9 @@ void draw_path(mjvScene* scn, std::vector<Eigen::Vector3d> pts, float width, flo
 
 // TODO: add color info!
 void visualize_candidates(bool vis_candidates, bool vis_grad_desc,
-    const std::vector<tsp::PathCandidate>& candidates, tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt) {
+    const std::vector<tsp::PathCandidate>& candidates,
+    tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt,
+    float* path_color, float* via_color, float* graddesc_color, float* graddesc_via_color) {
     if(vis_candidates) {
         for(const auto& candidate : candidates) {
             tsp::Point via_pt = candidate.via_point;
