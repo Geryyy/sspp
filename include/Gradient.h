@@ -52,7 +52,7 @@ enum class SolverStatus
     Invalid=3                   // default case
 };
 
-std::string SolverStatustoString(SolverStatus status)
+inline std::string SolverStatustoString(SolverStatus status)
 {
     switch (status)
     {

@@ -39,7 +39,11 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # Add executable
 # add_executable(${PROJECT_NAME} src/main.cpp include/Timer.h include/sspp.h)
 add_executable(${PROJECT_NAME} src/main_tsp.cpp include/Timer.h include/tsp.h include/utility.h
-        include/Gradient.h)
+        include/Gradient.h
+        include/visu.h
+        src/visu.cpp
+        include/ui.h
+        src/ui.cpp)
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
