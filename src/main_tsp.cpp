@@ -12,6 +12,7 @@
 #include <mujoco/mujoco.h>
 #include "visu.h"
 #include "ui.h"
+#include <omp.h>
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";

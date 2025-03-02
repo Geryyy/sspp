@@ -52,7 +52,7 @@ namespace tsp
 
         Spline path_spline_;
         mjModel *model_;
-        mjData *data_;
+        std::vector<mjData *> data_copies_;
         char error_buffer_[1000]; // Buffer for storing MuJoCo error messages
         std::vector<double> param_vec;
         std::vector<Point> via_points;
@@ -67,7 +67,8 @@ namespace tsp
         TaskSpacePlanner(mjModel *model)
             : model_(model), via_points(), param_vec()
         {
-            data_ = mj_makeData(model_);
+            mjData* data_ = mj_makeData(model_);
+            initializeDataCopies(data_);
             if (!data_)
             {
                 throw std::runtime_error("Failed to create MuJoCo data structure.");
@@ -84,16 +85,21 @@ namespace tsp
             }
 
             // Create the mjData structure associated with the model
-            data_ = mj_makeData(model_);
+            mjData* data_ = mj_makeData(model_);
             if (!data_)
             {
                 throw std::runtime_error("Failed to create MuJoCo data structure.");
             }
+
+            initializeDataCopies(data_);
         }
 
         ~TaskSpacePlanner()
         {
-            mj_deleteModel(model_);
+            for (auto &data_copy : data_copies_)
+            {
+                mj_deleteData(data_copy);
+            }
         }
 
         Spline initializePath(const Point &start, const Point &end, const Point &end_derivative, int num_points = 3)
@@ -182,47 +188,53 @@ namespace tsp
             return (geom2_center - geom1_center).norm();
         }
 
-        bool checkCollision(const Spline &spline, int num_samples, mjData *data)
+        bool checkCollision(const Spline &spline, int num_samples)
         {
-            for (int i = 0; i <= num_samples; ++i)
+            bool collision = false;
+#pragma omp parallel            
             {
-                double u = static_cast<double>(i) / num_samples;
-                Point point = spline(u);
-
-                for (int j = 0; j < kDOF; ++j)
+#pragma omp for schedule(dynamic, 1)
+                for (int i = 0; i <= num_samples; ++i)
                 {
-                    data->qpos[j] = point(j);
-                }
-                mj_forward(model_, data);
+                    mjData *mj_data = data_copies_[omp_get_thread_num()];
+                    double u = static_cast<double>(i) / num_samples;
+                    Point point = spline(u);
 
-                // iterate over all contacts
-                for (int i = 0; i < data->ncon; i++)
-                {
-                    //                    std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
-                    auto col_dist = data->contact[i].dist;
-                    if (col_dist < -1e-3)
+                    for (int j = 0; j < kDOF; ++j)
                     {
-                        auto nv = model_->nv;
-                        auto nJ = data_->nJ;
+                        mj_data->qpos[j] = point(j);
+                    }
+                    mj_forward(model_, mj_data);
 
-                        if (nJ > 0)
+                    // iterate over all contacts
+                    for (int i = 0; i < mj_data->ncon; i++)
+                    {
+                        //                    std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
+                        auto col_dist = mj_data->contact[i].dist;
+                        if (col_dist < -1e-3)
                         {
-                            int nc = nJ / nv;
-                            std::cout << "dimension of constrained jacobian nc: " << nc << " x nv: " << nv << std::endl;
-                            Eigen::Map<Eigen::MatrixXd> J_constr(data->efc_J, nv, nc);
-                            std::cout << "J_constr:\n"
-                                      << J_constr.transpose() << std::endl;
-                            std::cout << "ncon: " << data->ncon << std::endl;
-                        }
+                            auto nv = model_->nv;
+                            auto nJ = mj_data->nJ;
 
-                        CollisionPoint col_pt(u, col_dist, point);
-                        // coll_pts.push_back(col_pt);
-                        std::cout << " Collision at sample " << i << " with depth " << data->contact[i].dist << std::endl;
-                        return true;
+                            if (nJ > 0)
+                            {
+                                int nc = nJ / nv;
+                                std::cout << "dimension of constrained jacobian nc: " << nc << " x nv: " << nv << std::endl;
+                                Eigen::Map<Eigen::MatrixXd> J_constr(mj_data->efc_J, nv, nc);
+                                std::cout << "J_constr:\n"
+                                          << J_constr.transpose() << std::endl;
+                                std::cout << "ncon: " << mj_data->ncon << std::endl;
+                            }
+
+                            CollisionPoint col_pt(u, col_dist, point);
+                            // coll_pts.push_back(col_pt);
+                            std::cout << " Collision at sample " << i << " with depth " << mj_data->contact[i].dist << std::endl;
+                            collision =  true;
+                        }
                     }
                 }
             }
-            return false;
+            return collision;
         }
 
         /* TODO: make moveable object selectable --> adapt qpos range to update */
@@ -305,12 +317,14 @@ namespace tsp
 
         void collision_optimization(const std::vector<Point> &via_point_candidates,
             std::vector<PathCandidate> &successful_candidates,
-            std::vector<PathCandidate> &failed_candidates,
-            mjData* mj_data,
+            std::vector<PathCandidate> &failed_candidates, 
             int sample_count, int check_points, int gd_iterations) {
+#pragma omp parallel
             {
+#pragma omp for schedule(dynamic, 1)                
                 for (int i = 0; i < sample_count; ++i)
                 {
+                    mjData* mj_data = data_copies_[omp_get_thread_num()];
                     const Point via_candidate = via_point_candidates[i];
                     // Lambda function for collision cost
                     auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
@@ -326,7 +340,7 @@ namespace tsp
                     const auto via_pt_opt = graddesc.get_result();
 
                     std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
-
+#pragma omp critical
                     if(solver_status == SolverStatus::Converged){
                         PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
                         successful_candidates.push_back(candidate);
@@ -340,9 +354,13 @@ namespace tsp
         }
 
         void arclength_optimization(std::vector<PathCandidate> &path_candidates, std::vector<PathCandidate> &optimized_candidates,
-            mjData* mj_data, int check_points, int gd_iterations)
+            int check_points, int gd_iterations)
             {
+#pragma omp parallel              
+            {
+#pragma omp for schedule(dynamic, 1)
                 for(const auto& candidate : path_candidates) {
+                    mjData* mj_data = data_copies_[omp_get_thread_num()];
                     const Point via_candidate = candidate.via_point;
                     // Lambda function for collision cost
                     auto arc_lengthcost_lambda = [&](const Eigen::Vector3d &via_pt)
@@ -361,7 +379,7 @@ namespace tsp
                     const auto via_pt_opt = graddesc.get_result();
 
                     std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
-
+#pragma omp critical
                     if(solver_status == SolverStatus::Converged){
                         PathCandidate cand(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
                         optimized_candidates.push_back(cand);
@@ -371,6 +389,7 @@ namespace tsp
                         optimized_candidates.push_back(cand);
                     }
                 }
+            }
         }
 
         std::vector<PathCandidate> plan(const Point &start,
@@ -401,7 +420,7 @@ namespace tsp
 
             /* optimize candidates for collision */
             collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
-                data_, sample_count, check_points, gd_iterations);
+                sample_count, check_points, gd_iterations);
 
 
             /* tighten succesful paths */
@@ -451,6 +470,19 @@ namespace tsp
             }
             return pts;
         }
+
+    private:
+        void initializeDataCopies(mjData *data)
+        {
+            int max_threads = omp_get_max_threads();
+            data_copies_.resize(max_threads, nullptr);
+
+            for (auto &data_copy : data_copies_)
+            {
+                data_copy = mj_copyData(nullptr, model_, data);
+            }
+        }
+
     };
 } // namespace sspp
 
