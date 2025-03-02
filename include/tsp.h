@@ -251,7 +251,7 @@ namespace tsp
                     {
                         if (use_center_dist)
                         {
-                            cost += center_dist;
+                            cost += -center_dist;
                         }
                         else
                         {
@@ -301,6 +301,77 @@ namespace tsp
             return found;
         }
 
+
+        void collision_optimization(const std::vector<Point> &via_point_candidates,
+            std::vector<PathCandidate> &successful_candidates,
+            std::vector<PathCandidate> &failed_candidates,
+            mjData* mj_data,
+            int sample_count, int check_points, int gd_iterations) {
+            {
+                for (int i = 0; i < sample_count; ++i)
+                {
+                    const Point via_candidate = via_point_candidates[i];
+                    // Lambda function for collision cost
+                    auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
+                    {
+                        return collision_cost(via_pt, check_points, mj_data);
+                    };
+
+                    /* gradient descent steps */
+                    Point diff_delta = Point::Ones() * 1e-2;
+                    constexpr double step_size = 1e-3;
+                    GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
+                    auto solver_status = graddesc.optimize(via_candidate);
+                    const auto via_pt_opt = graddesc.get_result();
+
+                    std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
+
+                    if(solver_status == SolverStatus::Converged){
+                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                        successful_candidates.push_back(candidate);
+                    }
+                    else {
+                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                        failed_candidates.push_back(candidate);
+                    }
+                }
+            }
+        }
+
+        void arclength_optimization(std::vector<PathCandidate> &path_candidates, std::vector<PathCandidate> &optimized_candidates,
+            mjData* mj_data, int check_points, int gd_iterations)
+            {
+                for(const auto& candidate : path_candidates) {
+                    const Point via_candidate = candidate.via_point;
+                    // Lambda function for collision cost
+                    auto arc_lengthcost_lambda = [&](const Eigen::Vector3d &via_pt)
+                    {
+                        auto spline = path_from_via_pt(via_pt);
+                        double col_cost = collision_cost(via_pt, check_points, mj_data);
+                        double len_cost = computeArcLength(spline, check_points);
+                        return len_cost;// + col_cost*col_cost;
+                    };
+
+                    /* gradient descent steps */
+                    Point diff_delta = Point::Ones() * 1e-2;
+                    constexpr double step_size = 1e-3;
+                    GradientDescent graddesc(step_size, gd_iterations, arc_lengthcost_lambda, diff_delta);
+                    auto solver_status = graddesc.optimize(via_candidate);
+                    const auto via_pt_opt = graddesc.get_result();
+
+                    std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
+
+                    if(solver_status == SolverStatus::Converged){
+                        PathCandidate cand(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                        optimized_candidates.push_back(cand);
+                    }
+                    else {
+                        PathCandidate cand(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                        optimized_candidates.push_back(cand);
+                    }
+                }
+        }
+
         std::vector<PathCandidate> plan(const Point &start,
                                         const Point &end, const Point &end_derivative, double sigma, const Point &limits,
                                         const int sample_count = 50,
@@ -308,8 +379,6 @@ namespace tsp
                                         const int gd_iterations = 10,
                                         const int init_points = 3)
         {
-            std::vector<PathCandidate> path_candidates;
-            std::vector<PathCandidate> failed_candidates;
             // coll_pts.clear();
             /* initialize straight line */
             Spline init_spline = initializePath(start, end, end_derivative, init_points);
@@ -329,46 +398,22 @@ namespace tsp
                 // std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
             }
 
-            /* optimize candidates */
-            {
-                for (int i = 0; i < sample_count; ++i)
-                {
-                    Point via_candidate = via_point_candidates[i];
-                    // Lambda function for collision cost
-                    auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
-                    {
-                        return collision_cost(via_pt, check_points, data_);
-                    };
+            /* optimize candidates for collision */
+            collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
+                data_, sample_count, check_points, gd_iterations);
 
-                    /* gradient descent steps */
-                    Point diff_delta = Point::Ones() * 1e-2;
-                    constexpr double step_size = 1e-3;
-                    GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
-                    auto solver_status = graddesc.optimize(via_candidate);
-                    const auto via_pt_opt = graddesc.get_result();
-                    
-                    std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
-
-                    if(solver_status == SolverStatus::Converged){
-                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
-                        path_candidates.push_back(candidate);
-                    }
-                    else {
-                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
-                        failed_candidates.push_back(candidate);
-                    }
-                }
-            }
-
-            successful_candidates_ = path_candidates;
-            failed_candidates_ = failed_candidates;
 
             /* tighten succesful paths */
+            std::vector<PathCandidate> opt_candidates;
+            arclength_optimization(successful_candidates_, opt_candidates, data_, check_points, gd_iterations);
+
+            // test!!
+            failed_candidates_ = opt_candidates;
 
             /* find best path */
             findBestPath(successful_candidates_, path_spline_, check_points);
 
-            return path_candidates;
+            return successful_candidates_;
         }
 
         std::vector<PathCandidate> get_succesful_path_candidates() {

@@ -131,7 +131,7 @@ public:
             // Gradient descent update
             prev_x = via_candidate;
             prev_gradient = gradient;
-            via_candidate += step_size * gradient;
+            via_candidate -= step_size * gradient;
 
             if (k == iterations_ - 1)
             {
