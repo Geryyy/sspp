@@ -281,16 +281,15 @@ int main(int argc, char** argv) {
     tsp::Spline init_spline;
     Point end_derivative;
     end_derivative << 0,0,-1;
-    exec_timer.tic();
+
     init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
-    auto duration = exec_timer.toc();
-    std::cout << "duration [us]: " << duration/1e3 << std::endl;
+
     Point limits;
     limits << 1,1,1;
     double sigma = 0.1;
-    int sample_cnt = 3;
-    int check_cnt = 100;
-    int gd_iterations = 20;
+    int sample_cnt = 30;
+    int check_cnt = 10;
+    int gd_iterations = 10;
     int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
     Point end_pos = block2_pos;
     end_pos[2] += 0.01;
@@ -299,8 +298,14 @@ int main(int argc, char** argv) {
     // start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
+
+    exec_timer.tic();
+
     path_candidates = path_planner.plan(start_pos,
         end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+
+    auto duration = exec_timer.toc();
+    std::cout << "duration [ms]: " << duration/1e6 << std::endl;
 
     failed_candidates = path_planner.get_failed_path_candidates();
 

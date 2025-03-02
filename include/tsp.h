@@ -282,26 +282,22 @@ namespace tsp
             return total_length;
         }
 
-        bool findBestPath(const std::vector<Spline> &successful_paths, Spline &best_spline, int check_points = 10)
+        bool findBestPath(const std::vector<PathCandidate> &candidates, Spline &best_spline, int check_points = 10)
         {
             double min_cost = std::numeric_limits<double>::infinity();
             bool found = false;
 
             // #pragma omp parallel for
-            for (size_t i = 0; i < successful_paths.size(); ++i)
-            {
-                double cost = computeArcLength(successful_paths[i], check_points);
-                // #pragma omp critical
+            for(const auto& candidate : candidates) {
+                auto path_candidate = path_from_via_pt(candidate.via_point);
+                double cost = computeArcLength(path_candidate, check_points);
+                if (cost < min_cost)
                 {
-                    if (cost < min_cost)
-                    {
-                        min_cost = cost;
-                        best_spline = successful_paths[i];
-                        found = true;
-                    }
+                    min_cost = cost;
+                    best_spline = path_candidate;
+                    found = true;
                 }
             }
-
             return found;
         }
 
@@ -370,9 +366,7 @@ namespace tsp
             /* tighten succesful paths */
 
             /* find best path */
-            if(!successful_candidates_.empty()) {
-                path_spline_ = path_from_via_pt(successful_candidates_[0].via_point);
-            }
+            findBestPath(successful_candidates_, path_spline_, check_points);
 
             return path_candidates;
         }
