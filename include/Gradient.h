@@ -41,13 +41,15 @@ struct GradientStep
 {
     Eigen::Vector3d via_point;
     Eigen::Vector3d gradient;
+    double cost;
 };
 
 enum class SolverStatus
 {
     Converged = 0,             // Gradient vanishes
     MaxIterationsExceeded = 1, // Maximum iterations reached
-    BelowFloor = 2             // Via point below floor
+    BelowFloor = 2,             // Via point below floor
+    Invalid=3                   // default case
 };
 
 std::string SolverStatustoString(SolverStatus status)
@@ -61,7 +63,7 @@ std::string SolverStatustoString(SolverStatus status)
     case SolverStatus::BelowFloor:
         return "BelowFloor";
     default:
-        return "Unknown";
+        return "Invalid";
     }
 }
 
@@ -76,7 +78,7 @@ public:
 
     SolverStatus optimize(Eigen::Vector3d via_candidate)
     {
-        SolverStatus status;
+        SolverStatus status = SolverStatus::Invalid;
 
         Eigen::Vector3d prev_x = via_candidate;
         Gradient prev_grad(cost_function_, delta_, via_candidate);
@@ -102,7 +104,7 @@ public:
             }
 
             // Store step data
-            GradientStep step(via_candidate, gradient);
+            GradientStep step(via_candidate, gradient, cost_function_(via_candidate));
             steps.push_back(step);
 
             // std::cout << "gd step " << k << " via_pt: " << via_candidate.transpose()

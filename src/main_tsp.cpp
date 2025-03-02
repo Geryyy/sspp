@@ -54,7 +54,9 @@ std::vector<tsp::PathCandidate> failed_candidates;
 void print_candidates_statistics(const std::vector<tsp::PathCandidate>& candidates, const std::string& label) {
     std::cout << "number of " << label << " candidates: " << candidates.size() << std::endl;
     for(const auto& candidate : candidates) {
-        std::cout << "candidate.gds_steps: " << candidate.gradient_steps.size() << " status: " << SolverStatustoString(candidate.status) << std::endl;
+        std::cout << "candidate.gds_steps: " << candidate.gradient_steps.size()
+            << " status: " << SolverStatustoString(candidate.status)
+            << std::endl;
     }
 }
 

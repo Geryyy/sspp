@@ -227,7 +227,7 @@ namespace tsp
 
         /* TODO: make moveable object selectable --> adapt qpos range to update */
 
-        double collision_cost(const Point via_pt, int eval_cnt, mjData *data, bool use_center_dist = true)
+        double collision_cost(const Point& via_pt, int eval_cnt, mjData *data, bool use_center_dist = true)
         {
             Spline spline = path_from_via_pt(via_pt);
             double cost = 0.0;
@@ -251,7 +251,8 @@ namespace tsp
                     {
                         if (use_center_dist)
                         {
-                            cost += -center_dist;
+                            constexpr double lambda = 1e-4;
+                            cost += -1/(center_dist + lambda);
                         }
                         else
                         {
@@ -348,7 +349,7 @@ namespace tsp
                     {
                         auto spline = path_from_via_pt(via_pt);
                         double col_cost = collision_cost(via_pt, check_points, mj_data);
-                        double len_cost = computeArcLength(spline, check_points);
+                        double len_cost = (computeArcLength(spline, check_points));
                         return len_cost;// + col_cost*col_cost;
                     };
 
@@ -404,11 +405,12 @@ namespace tsp
 
 
             /* tighten succesful paths */
-            std::vector<PathCandidate> opt_candidates;
-            arclength_optimization(successful_candidates_, opt_candidates, data_, check_points, gd_iterations);
-
-            // test!!
-            failed_candidates_ = opt_candidates;
+            // TODO: needs fix -> moves below ground
+            // std::vector<PathCandidate> opt_candidates;
+            // arclength_optimization(successful_candidates_, opt_candidates, data_, check_points, gd_iterations);
+            //
+            // // test!!
+            // failed_candidates_ = opt_candidates;
 
             /* find best path */
             findBestPath(successful_candidates_, path_spline_, check_points);
