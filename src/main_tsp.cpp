@@ -16,8 +16,9 @@
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
+const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 // const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
+//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -59,6 +60,25 @@ int main(int argc, char** argv) {
 
     d = mj_makeData(m);
 
+    // Get the maximum number of threads available
+    int max_threads = omp_get_max_threads();
+
+    // Get the number of processors available
+    int num_procs = omp_get_num_procs();
+
+    // Get the current number of threads in use
+    int num_threads;
+#pragma omp parallel
+    {
+#pragma omp single
+        num_threads = omp_get_num_threads();
+    }
+
+    std::cout << "Maximum threads available: " << max_threads << std::endl;
+    std::cout << "Number of processors available: " << num_procs << std::endl;
+    std::cout << "Current number of threads in use: " << num_threads << std::endl;
+
+
     std::cout << "Taskspace Planner" << std::endl;
     std::cout << "DoFs: " << m->nq << std::endl;
     // std::cout << "Jacobian sparse: " << mj_isSparse(m) << std::endl;
@@ -88,7 +108,7 @@ int main(int argc, char** argv) {
     Point limits;
     limits << 1,1,1;
     double sigma = 0.1;
-    int sample_cnt = 30;
+    int sample_cnt = 20;
     int check_cnt = 10;
     int gd_iterations = 10;
     int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
@@ -111,9 +131,9 @@ int main(int argc, char** argv) {
     failed_candidates = path_planner.get_failed_path_candidates();
 
     std::cout << "nr of succesful path candidates: " << path_candidates.size() << std::endl;
-    for(int i = 0; i < path_candidates.size(); i++) {
-        std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
-    }
+//    for(int i = 0; i < path_candidates.size(); i++) {
+//        std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
+//    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
     // TEST purpose
@@ -142,7 +162,7 @@ int main(int argc, char** argv) {
     mjr_defaultContext(&con);
 
     // create scene and context
-    mjv_makeScene(m, &scn, 2000);
+    mjv_makeScene(m, &scn, 4000);
     mjr_makeContext(m, &con, mjFONTSCALE_150);
 
     // install GLFW mouse and keyboard callbacks

@@ -22,6 +22,7 @@ public:
     Eigen::Vector3d compute() const
     {
         Eigen::Vector3d grad;
+#pragma omp parallel for
         for (int i = 0; i < 3; ++i)
         {
             Eigen::Vector3d delta_vec = Eigen::Vector3d::Zero();
@@ -42,6 +43,8 @@ struct GradientStep
     Eigen::Vector3d via_point;
     Eigen::Vector3d gradient;
     double cost;
+
+    GradientStep(Eigen::Vector3d via_point, Eigen::Vector3d gradient, double cost) : via_point(via_point), gradient(gradient), cost(cost) {}
 };
 
 enum class SolverStatus

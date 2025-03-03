@@ -42,6 +42,8 @@ namespace tsp
         Point via_point;
         std::vector<GradientStep> gradient_steps;
         SolverStatus status;
+
+        PathCandidate(Point via_point, std::vector<GradientStep> gradient_steps, SolverStatus status) : via_point(via_point), gradient_steps(gradient_steps), status(status) {}
     };
 
     /* TODO: add start_derivative_ */
@@ -53,6 +55,7 @@ namespace tsp
         Spline path_spline_;
         mjModel *model_;
         std::vector<mjData *> data_copies_;
+        std::vector<mjData *> data_copies2_;
         char error_buffer_[1000]; // Buffer for storing MuJoCo error messages
         std::vector<double> param_vec;
         std::vector<Point> via_points;
@@ -97,6 +100,11 @@ namespace tsp
         ~TaskSpacePlanner()
         {
             for (auto &data_copy : data_copies_)
+            {
+                mj_deleteData(data_copy);
+            }
+
+            for (auto &data_copy : data_copies2_)
             {
                 mj_deleteData(data_copy);
             }
@@ -239,39 +247,42 @@ namespace tsp
 
         /* TODO: make moveable object selectable --> adapt qpos range to update */
 
-        double collision_cost(const Point& via_pt, int eval_cnt, mjData *data, bool use_center_dist = true)
+        double collision_cost(const Point& via_pt, int eval_cnt, mjData *mj_data, bool use_center_dist = true)
         {
             Spline spline = path_from_via_pt(via_pt);
             double cost = 0.0;
 
-            for (int i = 0; i <= eval_cnt; ++i)
+            // Use OpenMP to parallelize evaluation
+#pragma omp parallel
             {
-                double u = static_cast<double>(i) / eval_cnt;
-                Point point = spline(u);
+//                mjData *mj_data = data_copies2_[omp_get_thread_num()]; // Each thread gets a separate mjData copy
+                double thread_cost = 0.0; // Local cost for each thread
+//#pragma omp for nowait
+                for (int i = 0; i <= eval_cnt; ++i) {
+                    double u = static_cast<double>(i) / eval_cnt;
+                    Point point = spline(u);
 
-                for (int j = 0; j < kDOF; ++j)
-                {
-                    data->qpos[j] = point(j);
-                }
-                mj_forward(model_, data);
+                    for (int j = 0; j < kDOF; ++j) {
+                        mj_data->qpos[j] = point(j);
+                    }
+                    mj_forward(model_, mj_data);
 
-                for (int i = 0; i < data->ncon; i++)
-                {
-                    double col_dist = data->contact[i].dist;
-                    double center_dist = get_geom_center_distance(i, data);
-                    if (col_dist < -1e-3)
-                    {
-                        if (use_center_dist)
-                        {
-                            constexpr double lambda = 1e-4;
-                            cost += -1/(center_dist + lambda);
-                        }
-                        else
-                        {
-                            cost += -col_dist;
+                    for (int i = 0; i < mj_data->ncon; i++) {
+                        double col_dist = mj_data->contact[i].dist;
+                        double center_dist = get_geom_center_distance(i, mj_data);
+                        if (col_dist < -1e-3) {
+                            if (use_center_dist) {
+                                constexpr double lambda = 1e-4;
+                                cost += -1 / (center_dist + lambda);
+                            } else {
+                                cost += -col_dist;
+                            }
                         }
                     }
                 }
+                // Accumulate the thread-local costs safely
+#pragma omp atomic
+                cost += thread_cost;
             }
             return cost;
         }
@@ -279,15 +290,16 @@ namespace tsp
         double computeArcLength(const Spline &spline, int check_points) const
         {
             double total_length = 0.0;
+            const double step = 1.0 / (check_points - 1);  // Precompute step size
 
 #pragma omp parallel for reduction(+ : total_length)
             for (int i = 1; i < check_points; ++i)
             {
-                double u1 = static_cast<double>(i - 1) / (check_points - 1);
-                double u2 = static_cast<double>(i) / (check_points - 1);
+                double u1 = (i - 1) * step;
+                double u2 = i * step;
 
-                Eigen::VectorXd p1 = spline(u1);
-                Eigen::VectorXd p2 = spline(u2);
+                const Eigen::VectorXd p1 = spline(u1);  // Call once
+                const Eigen::VectorXd p2 = spline(u2);  // Call once
 
                 total_length += (p2 - p1).norm();
             }
@@ -299,59 +311,103 @@ namespace tsp
         {
             double min_cost = std::numeric_limits<double>::infinity();
             bool found = false;
+            Spline best_spline_local; // Local best spline (will be assigned globally later)
 
-            // #pragma omp parallel for
-            for(const auto& candidate : candidates) {
-                auto path_candidate = path_from_via_pt(candidate.via_point);
-                double cost = computeArcLength(path_candidate, check_points);
-                if (cost < min_cost)
+#pragma omp parallel
+            {
+                double thread_min_cost = std::numeric_limits<double>::infinity();
+                Spline thread_best_spline;
+                bool thread_found = false;
+
+#pragma omp for nowait
+                for (size_t i = 0; i < candidates.size(); ++i)
                 {
-                    min_cost = cost;
-                    best_spline = path_candidate;
-                    found = true;
+                    auto path_candidate = path_from_via_pt(candidates[i].via_point);
+                    double cost = computeArcLength(path_candidate, check_points);
+
+                    if (cost < thread_min_cost)
+                    {
+                        thread_min_cost = cost;
+                        thread_best_spline = path_candidate;
+                        thread_found = true;
+                    }
+                }
+
+                // Merge thread-local results into global variables safely
+#pragma omp critical
+                {
+                    if (thread_found && thread_min_cost < min_cost)
+                    {
+                        min_cost = thread_min_cost;
+                        best_spline_local = thread_best_spline;
+                        found = true;
+                    }
                 }
             }
+
+            if (found)
+            {
+                best_spline = best_spline_local;
+            }
+
             return found;
         }
 
 
         void collision_optimization(const std::vector<Point> &via_point_candidates,
-            std::vector<PathCandidate> &successful_candidates,
-            std::vector<PathCandidate> &failed_candidates, 
-            int sample_count, int check_points, int gd_iterations) {
+                                    std::vector<PathCandidate> &successful_candidates,
+                                    std::vector<PathCandidate> &failed_candidates,
+                                    int sample_count, int check_points, int gd_iterations)
+        {
+            // Thread-local storage
+            std::vector<PathCandidate> successful_local;
+            std::vector<PathCandidate> failed_local;
+
 #pragma omp parallel
             {
-#pragma omp for schedule(dynamic, 1)                
+                mjData* mj_data = data_copies_[omp_get_thread_num()]; // Each thread gets its own mjData
+                std::vector<PathCandidate> successful_thread;
+                std::vector<PathCandidate> failed_thread;
+
+#pragma omp for schedule(dynamic, 1) nowait
                 for (int i = 0; i < sample_count; ++i)
                 {
-                    mjData* mj_data = data_copies_[omp_get_thread_num()];
                     const Point via_candidate = via_point_candidates[i];
+
                     // Lambda function for collision cost
                     auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
                     {
                         return collision_cost(via_pt, check_points, mj_data);
                     };
 
-                    /* gradient descent steps */
+                    /* Gradient descent optimization */
                     Point diff_delta = Point::Ones() * 1e-2;
                     constexpr double step_size = 1e-3;
                     GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
                     auto solver_status = graddesc.optimize(via_candidate);
                     const auto via_pt_opt = graddesc.get_result();
 
-                    std::cout << "solver status: " << SolverStatustoString(solver_status) << std::endl;
+                    // Store results in thread-local vectors
+                    PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
+                    if (solver_status == SolverStatus::Converged)
+                    {
+                        successful_thread.push_back(candidate);
+                    }
+                    else
+                    {
+                        failed_thread.push_back(candidate);
+                    }
+                }
+
+                // Merge thread-local results into global vectors safely
 #pragma omp critical
-                    if(solver_status == SolverStatus::Converged){
-                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
-                        successful_candidates.push_back(candidate);
-                    }
-                    else {
-                        PathCandidate candidate(via_pt_opt, graddesc.get_gradient_descent_steps(), solver_status);
-                        failed_candidates.push_back(candidate);
-                    }
+                {
+                    successful_candidates.insert(successful_candidates.end(), successful_thread.begin(), successful_thread.end());
+                    failed_candidates.insert(failed_candidates.end(), failed_thread.begin(), failed_thread.end());
                 }
             }
         }
+
 
         void arclength_optimization(std::vector<PathCandidate> &path_candidates, std::vector<PathCandidate> &optimized_candidates,
             int check_points, int gd_iterations)
@@ -399,8 +455,11 @@ namespace tsp
                                         const int gd_iterations = 10,
                                         const int init_points = 3)
         {
+            Timer exec_timer;
+
             // coll_pts.clear();
             /* initialize straight line */
+            exec_timer.tic();
             Spline init_spline = initializePath(start, end, end_derivative, init_points);
             path_spline_ = init_spline;
             Point init_via_pt = via_points[1];
@@ -417,10 +476,16 @@ namespace tsp
                 via_point_candidates.push_back(noisy_via_pt);
                 // std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
             }
+            auto duration = exec_timer.toc();
+            std::cerr << "plan.Initialize duration [ms]: " << duration/1e6 << std::endl;
 
             /* optimize candidates for collision */
+            exec_timer.tic();
             collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
                 sample_count, check_points, gd_iterations);
+
+            duration = exec_timer.toc();
+            std::cerr << "Collision Optimization duration [ms]: " << duration/1e6 << std::endl;
 
 
             /* tighten succesful paths */
@@ -432,7 +497,10 @@ namespace tsp
             // failed_candidates_ = opt_candidates;
 
             /* find best path */
+            exec_timer.tic();
             findBestPath(successful_candidates_, path_spline_, check_points);
+            duration = exec_timer.toc();
+            std::cerr << "findBestPath duration [ms]: " << duration/1e6 << std::endl;
 
             return successful_candidates_;
         }
@@ -478,6 +546,13 @@ namespace tsp
             data_copies_.resize(max_threads, nullptr);
 
             for (auto &data_copy : data_copies_)
+            {
+                data_copy = mj_copyData(nullptr, model_, data);
+            }
+
+            data_copies2_.resize(max_threads, nullptr);
+
+            for (auto &data_copy : data_copies2_)
             {
                 data_copy = mj_copyData(nullptr, model_, data);
             }
