@@ -22,6 +22,7 @@ extern bool vis_succ_candidates;
 extern bool vis_failed_candidates;
 extern bool vis_grad_descent;
 extern bool vis_animate_block;
+extern bool vis_sampled_via_pts;
 
 
 void print_candidates_statistics(const std::vector<tsp::PathCandidate>& candidates, const std::string& label);

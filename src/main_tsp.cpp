@@ -16,9 +16,9 @@
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
+// const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 // const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
-//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
+const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     Point limits;
     limits << 1,1,1;
     double sigma = 0.1;
-    int sample_cnt = 20;
+    int sample_cnt = 10;
     int check_cnt = 10;
     int gd_iterations = 10;
     int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
@@ -120,15 +120,44 @@ int main(int argc, char** argv) {
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
 
-    exec_timer.tic();
 
-    path_candidates = path_planner.plan(start_pos,
-        end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+    std::vector<double> duration_vec;
+    for(int i = 0; i < 100; i++) {
+        path_planner.reset();
+        exec_timer.tic();
 
-    auto duration = exec_timer.toc();
-    std::cerr << "duration [ms]: " << duration/1e6 << std::endl;
+        path_candidates = path_planner.plan(start_pos,
+            end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+
+        auto duration = exec_timer.toc();
+        duration_vec.push_back(static_cast<double>(duration/1e6));
+    }
+
+    // Compute mean
+    double sum = std::accumulate(duration_vec.begin(), duration_vec.end(), 0.0);
+    double mean = sum / duration_vec.size();
+
+    // Compute standard deviation
+    double sq_sum = std::inner_product(duration_vec.begin(), duration_vec.end(), duration_vec.begin(), 0.0);
+    double stdev = std::sqrt(sq_sum / duration_vec.size() - mean * mean);
+
+    // Compute min and max
+    auto min_it = std::min_element(duration_vec.begin(), duration_vec.end());
+    auto max_it = std::max_element(duration_vec.begin(), duration_vec.end());
+    int64_t min_val = (min_it != duration_vec.end()) ? *min_it : 0;
+    int64_t max_val = (max_it != duration_vec.end()) ? *max_it : 0;
+
+    // Print results
+    std::cout << "Mean: " << mean << " ms" << std::endl;
+    std::cout << "Standard Deviation: " << stdev << " ms" << std::endl;
+    std::cout << "Min: " << min_val << " ms" << std::endl;
+    std::cout << "Max: " << max_val << " ms" << std::endl;
+
+
+    // std::cerr << "duration [ms]: " << duration/1e6 << std::endl;
 
     failed_candidates = path_planner.get_failed_path_candidates();
+    auto sampled_via_pts = path_planner.get_sampled_via_pts();
 
     std::cout << "nr of succesful path candidates: " << path_candidates.size() << std::endl;
 //    for(int i = 0; i < path_candidates.size(); i++) {
@@ -199,6 +228,9 @@ int main(int argc, char** argv) {
             draw_path(&scn, pts, 0.2, path_color);
             // draw_sphere(&scn, via_pt, 0.03, via_color);
         }
+
+        // vis_sampled_via_pts
+        visualize_via_pts(vis_sampled_via_pts, sampled_via_pts, path_planner, scn, pts_cnt, sampled_via_path_color, sampled_via_color);
 
         // draw path candidates
         visualize_candidates(vis_succ_candidates, vis_grad_descent,

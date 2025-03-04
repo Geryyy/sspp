@@ -16,6 +16,9 @@
 #include "Timer.h"
 #include <random>
 
+
+#define PROFILE_TIME 0
+
 namespace tsp
 {
     static constexpr int kSplineDegree = 2;
@@ -65,6 +68,7 @@ namespace tsp
         // statistics
         std::vector<PathCandidate> successful_candidates_;
         std::vector<PathCandidate> failed_candidates_;
+        std::vector<Point> sampled_via_pts_;
 
     public:
         TaskSpacePlanner(mjModel *model)
@@ -108,6 +112,12 @@ namespace tsp
             {
                 mj_deleteData(data_copy);
             }
+        }
+
+        void reset() {
+            successful_candidates_.clear();
+            failed_candidates_.clear();
+            sampled_via_pts_.clear();
         }
 
         Spline initializePath(const Point &start, const Point &end, const Point &end_derivative, int num_points = 3)
@@ -455,11 +465,14 @@ namespace tsp
                                         const int gd_iterations = 10,
                                         const int init_points = 3)
         {
+#if PROFILE_TIME
             Timer exec_timer;
-
+#endif
             // coll_pts.clear();
             /* initialize straight line */
+#if PROFILE_TIME
             exec_timer.tic();
+#endif
             Spline init_spline = initializePath(start, end, end_derivative, init_points);
             path_spline_ = init_spline;
             Point init_via_pt = via_points[1];
@@ -476,16 +489,25 @@ namespace tsp
                 via_point_candidates.push_back(noisy_via_pt);
                 // std::cout << "random via point[" << i << "]: " << noisy_via_pt.transpose() << std::endl;
             }
+
+            sampled_via_pts_ = via_point_candidates;
+
+#if PROFILE_TIME
             auto duration = exec_timer.toc();
             std::cerr << "plan.Initialize duration [ms]: " << duration/1e6 << std::endl;
+#endif
 
             /* optimize candidates for collision */
+#if PROFILE_TIME
             exec_timer.tic();
+#endif
             collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
                 sample_count, check_points, gd_iterations);
 
+#if PROFILE_TIME
             duration = exec_timer.toc();
             std::cerr << "Collision Optimization duration [ms]: " << duration/1e6 << std::endl;
+#endif
 
 
             /* tighten succesful paths */
@@ -497,10 +519,14 @@ namespace tsp
             // failed_candidates_ = opt_candidates;
 
             /* find best path */
+#if PROFILE_TIME
             exec_timer.tic();
+#endif
             findBestPath(successful_candidates_, path_spline_, check_points);
+#if PROFILE_TIME
             duration = exec_timer.toc();
             std::cerr << "findBestPath duration [ms]: " << duration/1e6 << std::endl;
+#endif
 
             return successful_candidates_;
         }
@@ -511,6 +537,10 @@ namespace tsp
 
         std::vector<PathCandidate> get_failed_path_candidates() {
             return failed_candidates_;
+        }
+
+        std::vector<Point> get_sampled_via_pts() {
+            return sampled_via_pts_;
         }
 
         std::vector<Point> get_path_pts(const Spline &spline, const int pts_cnt = 10)

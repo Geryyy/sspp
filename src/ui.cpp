@@ -26,6 +26,7 @@ bool vis_succ_candidates = false;
 bool vis_failed_candidates = false;
 bool vis_grad_descent = false;
 bool vis_animate_block = false;
+bool vis_sampled_via_pts = false;
 
 extern std::vector<tsp::PathCandidate> path_candidates;
 extern std::vector<tsp::PathCandidate> failed_candidates;
@@ -46,6 +47,7 @@ void print_menue() {
     std::cout << "E\tvis_failed_candidates" << std::endl;
     std::cout << "R\tvis_grad_descent" << std::endl;
     std::cout << "A\tanimate block" << std::endl;
+    std::cout << "T\tvis_sampled_via_points" << std::endl;
 }
 
 // keyboard callback
@@ -87,6 +89,12 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
     if (act==GLFW_PRESS && key==GLFW_KEY_A) {
         vis_animate_block = !vis_animate_block;
         std::cout << "vis_animate_block: " << vis_animate_block << std::endl;
+    }
+
+    // visualize sampled via points
+    if (act==GLFW_PRESS && key==GLFW_KEY_T) {
+        vis_sampled_via_pts = !vis_sampled_via_pts;
+        std::cout << "vis_sampled_via_pts: " << vis_sampled_via_pts << std::endl;
     }
 
 }

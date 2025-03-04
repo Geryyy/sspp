@@ -14,6 +14,9 @@ inline float path_color[] = {0,1,1,1};
 inline float graddesc_color[] = {0,0.7,0.5,0.5};
 inline float graddesc_via_color[] = {0,1,1,0.5};
 
+inline float sampled_via_color[] = {0.5,1,0.5,0.5};
+inline float sampled_via_path_color[] = {0.5,1,0.5,0.5};
+
 inline float failed_via_color[] = {1.0, 0.5, 0.5, 0.5};       // More red, more transparent
 inline float failed_path_color[] = {1.0, 0.5, 0.5, 0.5};      // Same as via for consistency
 inline float failed_graddesc_color[] = {0.8, 0.3, 0.3, 0.3};  // Darker red, more transparent
@@ -29,5 +32,9 @@ void visualize_candidates(bool vis_candidates, bool vis_grad_desc,
     const std::vector<tsp::PathCandidate>& candidates,
     tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt,
     float* path_color, float* via_color, float* graddesc_color, float* graddesc_via_color);
+
+void visualize_via_pts(bool vis_via_pts, const std::vector<tsp::Point>& via_pts,
+    tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt,
+    float* path_color, float* via_color);
 
 #endif //VISU_H

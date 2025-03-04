@@ -106,3 +106,17 @@ void visualize_candidates(bool vis_candidates, bool vis_grad_desc,
         }
     }
 }
+
+void visualize_via_pts(bool vis_via_pts, const std::vector<tsp::Point>& via_pts,
+    tsp::TaskSpacePlanner &planner, mjvScene &scn, int pts_cnt,
+    float* path_color, float* via_color) {
+        if(vis_via_pts) {
+            for(const auto& pt : via_pts) {
+                const tsp::Point& via_pt = pt;
+                tsp::Spline spline = planner.path_from_via_pt(via_pt);
+                auto pts = planner.get_path_pts(spline, pts_cnt);
+                draw_path(&scn, pts, 0.2, path_color);
+                draw_sphere(&scn, via_pt, 0.03, via_color);
+            }
+        }
+}
