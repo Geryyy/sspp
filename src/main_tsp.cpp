@@ -16,9 +16,9 @@
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
-// const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
+ const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 // const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
+//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -165,6 +165,7 @@ int main(int argc, char** argv) {
 //    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
+    return 0;
     // TEST purpose
     for(int i = 0; i <3; i++) {
         d->qpos[i] = end_pos[i];
