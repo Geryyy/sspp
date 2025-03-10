@@ -19,8 +19,8 @@ endif()
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -march=native -funroll-loops -ftree-vectorize")
 
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -O0")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0")
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -O0")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0")
 
 # Add profiling flags for gperftools (heap and CPU profiling)
 if(ENABLE_PROFILE)

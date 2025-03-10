@@ -14,6 +14,8 @@
 #include "ui.h"
 #include <omp.h>
 
+using namespace visu;
+
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
  const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
@@ -29,11 +31,11 @@ mjvScene scn;                       // abstract scene
 mjrContext con;                     // custom GPU context
 
 
-Eigen::Vector3d get_body_position(mjModel* m, mjData* d, std::string name){
+tsp::Point get_body_position(mjModel* m, mjData* d, std::string name){
     auto block_id = mj_name2id(m, mjtObj::mjOBJ_BODY, name.c_str());
 //    std::cout << block_name << " id: " << block_id << std::endl;
-    Eigen::Vector3d body_pos;
-    body_pos << d->xpos[block_id*3], d->xpos[block_id*3+1], d->xpos[block_id*3+2];
+    tsp::Point body_pos;
+    body_pos << d->xpos[block_id*3], d->xpos[block_id*3+1], d->xpos[block_id*3+2], 0.0;
     return body_pos;
 }
 
@@ -44,7 +46,6 @@ std::vector<tsp::PathCandidate> failed_candidates;
 
 int main(int argc, char** argv) {
     Timer exec_timer;
-    std::cout << "Mujoco Collission Checker" << std::endl;
     // Print MuJoCo version
     std::cout << "MuJoCo version: " << mj_version() << std::endl;
     // Print Eigen version
@@ -101,12 +102,12 @@ int main(int argc, char** argv) {
     using Point = tsp::Point;
     tsp::Spline init_spline;
     Point end_derivative;
-    end_derivative << 0,0,-1;
+    end_derivative << 0,0,-1, 0;
 
     init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
 
     Point limits;
-    limits << 1,1,1;
+    limits << 1,1,1, 1.5708;
     double sigma = 0.1;
     int sample_cnt = 10;
     int check_cnt = 10;
@@ -115,14 +116,15 @@ int main(int argc, char** argv) {
     Point end_pos = block2_pos;
     end_pos[2] += 0.01;
     Point start_pos;
-    start_pos << 0.5,0.5,0.5;
+    start_pos << 0.5,0.5,0.5, 0;
     // start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
 
 
     std::vector<double> duration_vec;
-    for(int i = 0; i < 100; i++) {
+    constexpr int N = 1;
+    for(int i = 0; i < N; i++) {
         path_planner.reset();
         exec_timer.tic();
 
@@ -165,7 +167,7 @@ int main(int argc, char** argv) {
 //    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
-    return 0;
+//    return 0;
     // TEST purpose
     for(int i = 0; i <3; i++) {
         d->qpos[i] = end_pos[i];
@@ -221,12 +223,12 @@ int main(int argc, char** argv) {
         // update scene and render
         mjv_updateScene(m, d, &opt, NULL, &cam, mjCAT_ALL, &scn);
 
-        draw_sphere(&scn,via_pts[0],0.03, start_color);
-        draw_sphere(&scn,via_pts[2],0.03, end_color);
+        draw_sphere(&scn,convert_point(via_pts[0]),0.03, start_color);
+        draw_sphere(&scn,convert_point(via_pts[2]),0.03, end_color);
 
         if(vis_best_path) {
             auto pts = path_planner.get_path_pts(pts_cnt);
-            draw_path(&scn, pts, 0.2, path_color);
+            draw_path(&scn, convert_point_vector(pts), 0.2, path_color);
             // draw_sphere(&scn, via_pt, 0.03, via_color);
         }
 

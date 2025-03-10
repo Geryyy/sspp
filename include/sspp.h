@@ -2,8 +2,8 @@
 // Created by geraldebmer on 11.11.24.
 //
 
-#ifndef spp_SAMPLING_PATH_PLANNER_H
-#define spp_SAMPLING_PATH_PLANNER_H
+#ifndef TASK_SPACE_PLANNER_H
+#define TASK_SPACE_PLANNER_H
 
 #include <vector>
 #include <Eigen/Core>
@@ -246,4 +246,4 @@ namespace sspp
 
 } // namespace sspp
 
-#endif // spp_SAMPLING_PATH_PLANNER_H
+#endif // TASK_SPACE_PLANNER_H

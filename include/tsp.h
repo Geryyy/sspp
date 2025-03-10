@@ -2,8 +2,8 @@
 // Created by geraldebmer on 26.02.25
 //
 
-#ifndef spp_SAMPLING_PATH_PLANNER_H
-#define spp_SAMPLING_PATH_PLANNER_H
+#ifndef TASK_SPACE_PLANNER_H
+#define TASK_SPACE_PLANNER_H
 
 #include "Gradient.h"
 #include <vector>
@@ -21,10 +21,13 @@
 
 namespace tsp
 {
-    static constexpr int kSplineDegree = 2;
-    static constexpr int kDOF = 3;
+    constexpr int kSplineDegree = 2;
+    constexpr int kDOF = 4;
     using Point = Eigen::Matrix<double, kDOF, 1>;
     using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
+//    using GradientType = Gradient<kDOF>;
+    using GradientStepType = GradientStep<kDOF>;
+    using GradientDescentType = GradientDescent<kDOF>;
 
     struct CollisionPoint
     {
@@ -43,10 +46,10 @@ namespace tsp
     struct PathCandidate
     {
         Point via_point;
-        std::vector<GradientStep> gradient_steps;
+        std::vector<GradientStepType> gradient_steps;
         SolverStatus status;
 
-        PathCandidate(Point via_point, std::vector<GradientStep> gradient_steps, SolverStatus status) : via_point(via_point), gradient_steps(gradient_steps), status(status) {}
+        PathCandidate(Point via_point, std::vector<GradientStepType> gradient_steps, SolverStatus status) : via_point(via_point), gradient_steps(gradient_steps), status(status) {}
     };
 
     /* TODO: add start_derivative_ */
@@ -138,7 +141,7 @@ namespace tsp
             Eigen::MatrixXd via_mat(kDOF, num_points);
             for (size_t i = 0; i < via_points.size(); i++)
             {
-                via_mat.block<3, 1>(0, i) = via_points[i];
+                via_mat.block<kDOF, 1>(0, i) = via_points[i];
             }
 
             Eigen::MatrixXd derivatives = end_derivative;
@@ -155,7 +158,7 @@ namespace tsp
                                                 kDOF, via_points.size());
 
             Eigen::MatrixXd via_mat_copy = via_mat;
-            via_mat_copy.block<3, 1>(0, 1) = via_pt;
+            via_mat_copy.block<kDOF, 1>(0, 1) = via_pt;
 
             Eigen::MatrixXd derivatives = end_derivative_;
             Eigen::Vector<int, 1> deriv_ind(via_points.size() - 1);
@@ -172,8 +175,9 @@ namespace tsp
             std::normal_distribution<double> dist_x(mean.x(), stddev.x());
             std::normal_distribution<double> dist_y(mean.y(), stddev.y());
             std::normal_distribution<double> dist_z(mean.z(), stddev.z());
-
-            return Point(dist_x(gen), dist_y(gen), dist_z(gen));
+            Point pt;
+            pt << dist_x(gen), dist_y(gen), dist_z(gen), 0.0;
+            return pt;
         }
 
         Point evaluate(double u, const Spline &spline)
@@ -201,12 +205,34 @@ namespace tsp
             int geom1_id = data->contact[contact_id].geom1;
             int geom2_id = data->contact[contact_id].geom2;
             Point geom1_center, geom2_center;
-            geom1_center << data->geom_xpos[geom1_id * 3], data->geom_xpos[geom1_id * 3 + 1], data->geom_xpos[geom1_id * 3 + 2];
-            geom2_center << data->geom_xpos[geom2_id * 3], data->geom_xpos[geom2_id * 3 + 1], data->geom_xpos[geom2_id * 3 + 2];
+            geom1_center << data->geom_xpos[geom1_id * 3], data->geom_xpos[geom1_id * 3 + 1], data->geom_xpos[geom1_id * 3 + 2], 0.0;
+            geom2_center << data->geom_xpos[geom2_id * 3], data->geom_xpos[geom2_id * 3 + 1], data->geom_xpos[geom2_id * 3 + 2], 0.0;
             return (geom2_center - geom1_center).norm();
         }
 
-        bool checkCollision(const Spline &spline, int num_samples)
+        bool check_collision_point(const Point pt)
+        {
+            mjData *mj_data = this->data_copies_[0];
+            Point point = pt;
+
+            for (int j = 0; j < 3; ++j)
+            {
+                mj_data->qpos[j] = point(j);
+            }
+            mj_forward(model_, mj_data);
+
+            for (int i = 0; i < mj_data->ncon; i++)
+            {
+                auto col_dist = mj_data->contact[i].dist;
+                if (col_dist < -1e-3)
+                {
+                    return true; 
+                }
+            }
+            return false;
+        }
+
+        bool check_collision(const Spline &spline, int num_samples)
         {
             bool collision = false;
 #pragma omp parallel            
@@ -385,7 +411,7 @@ namespace tsp
                     const Point via_candidate = via_point_candidates[i];
 
                     // Lambda function for collision cost
-                    auto collision_cost_lambda = [&](const Eigen::Vector3d &via_pt)
+                    auto collision_cost_lambda = [&](const Point &via_pt)
                     {
                         return collision_cost(via_pt, check_points, mj_data);
                     };
@@ -393,7 +419,7 @@ namespace tsp
                     /* Gradient descent optimization */
                     Point diff_delta = Point::Ones() * 1e-2;
                     constexpr double step_size = 1e-3;
-                    GradientDescent graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
+                    GradientDescentType graddesc(step_size, gd_iterations, collision_cost_lambda, diff_delta);
                     auto solver_status = graddesc.optimize(via_candidate);
                     const auto via_pt_opt = graddesc.get_result();
 
@@ -429,7 +455,7 @@ namespace tsp
                     mjData* mj_data = data_copies_[omp_get_thread_num()];
                     const Point via_candidate = candidate.via_point;
                     // Lambda function for collision cost
-                    auto arc_lengthcost_lambda = [&](const Eigen::Vector3d &via_pt)
+                    auto arc_lengthcost_lambda = [&](const Point &via_pt)
                     {
                         auto spline = path_from_via_pt(via_pt);
                         double col_cost = collision_cost(via_pt, check_points, mj_data);
@@ -440,7 +466,7 @@ namespace tsp
                     /* gradient descent steps */
                     Point diff_delta = Point::Ones() * 1e-2;
                     constexpr double step_size = 1e-3;
-                    GradientDescent graddesc(step_size, gd_iterations, arc_lengthcost_lambda, diff_delta);
+                    GradientDescentType graddesc(step_size, gd_iterations, arc_lengthcost_lambda, diff_delta);
                     auto solver_status = graddesc.optimize(via_candidate);
                     const auto via_pt_opt = graddesc.get_result();
 
@@ -476,6 +502,19 @@ namespace tsp
             Spline init_spline = initializePath(start, end, end_derivative, init_points);
             path_spline_ = init_spline;
             Point init_via_pt = via_points[1];
+
+            // check if start or end are in collission
+
+            std::vector<PathCandidate> no_candidates;
+            if(check_collision_point(start)){
+                std::cerr << "start position is in collision!" << std::endl;
+                return no_candidates;
+            }
+
+            if(check_collision_point(end)){
+                std::cerr << "end position is in collision!" << std::endl;
+                return no_candidates;
+            }
 
             /* create random ensemble */
             std::vector<Point> via_point_candidates;
@@ -591,4 +630,4 @@ namespace tsp
     };
 } // namespace sspp
 
-#endif // spp_SAMPLING_PATH_PLANNER_H
+#endif // TASK_SPACE_PLANNER_H
