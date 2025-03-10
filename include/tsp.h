@@ -619,6 +619,8 @@ namespace tsp
     private:
         void initializeDataCopies(const mjData *data)
         {
+            Timer exectimer;
+            exectimer.tic();
             int max_threads = omp_get_max_threads();
             data_copies_.resize(max_threads, nullptr);
 
@@ -626,6 +628,7 @@ namespace tsp
             {
                 data_copy = mj_copyData(nullptr, model_, data);
             }
+            std::cout << "data copies duration: " << exectimer.toc()/1e3 << " us" << std::endl;
 
             data_copies2_.resize(max_threads, nullptr);
 
