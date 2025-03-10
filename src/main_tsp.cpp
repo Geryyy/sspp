@@ -18,9 +18,9 @@ using namespace visu;
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
- const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
+ // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 // const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
-//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
+const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -29,15 +29,6 @@ mjvCamera cam;                      // abstract camera
 mjvOption opt;                      // visualization options
 mjvScene scn;                       // abstract scene
 mjrContext con;                     // custom GPU context
-
-
-tsp::Point get_body_position(mjModel* m, mjData* d, std::string name){
-    auto block_id = mj_name2id(m, mjtObj::mjOBJ_BODY, name.c_str());
-//    std::cout << block_name << " id: " << block_id << std::endl;
-    tsp::Point body_pos;
-    body_pos << d->xpos[block_id*3], d->xpos[block_id*3+1], d->xpos[block_id*3+2], 0.0;
-    return body_pos;
-}
 
 
 std::vector<tsp::PathCandidate> path_candidates;
@@ -94,7 +85,9 @@ int main(int argc, char** argv) {
     auto block2_pos = get_body_position(m, d, "block2");
     // std::cout << "block1_pos: " << block1_pos.transpose() << std::endl;
     // std::cout << "block2_pos: " << block2_pos.transpose() << std::endl;
-
+    auto body2_id = get_body_id(m, "block2");
+    auto block2_yaw = get_body_yaw(body2_id, d);
+    std::cout << "block2 yaw: " << block2_yaw << std::endl;
     // static sampling path planner
 
     using TSP = tsp::TaskSpacePlanner;
@@ -109,21 +102,23 @@ int main(int argc, char** argv) {
     Point limits;
     limits << 1,1,1, 1.5708;
     double sigma = 0.1;
-    int sample_cnt = 10;
-    int check_cnt = 10;
+    int sample_cnt = 20;
+    int check_cnt = 20;
     int gd_iterations = 10;
     int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
-    Point end_pos = block2_pos;
+    Point end_pos;
+    end_pos.block<3,1>(0,0) = block2_pos;
+    end_pos[3] = block2_yaw;
     end_pos[2] += 0.01;
     Point start_pos;
-    start_pos << 0.5,0.5,0.5, 0;
+    start_pos << 0.5,0.5,0.5, 1.5708;
     // start_pos = block1_pos;
 //    start_pos[2] += 0.5;
 //    start_pos << 1,1,1;
 
 
     std::vector<double> duration_vec;
-    constexpr int N = 1;
+    constexpr int N = 100;
     for(int i = 0; i < N; i++) {
         path_planner.reset();
         exec_timer.tic();
@@ -167,7 +162,7 @@ int main(int argc, char** argv) {
 //    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
-//    return 0;
+    return 0;
     // TEST purpose
     for(int i = 0; i <3; i++) {
         d->qpos[i] = end_pos[i];
@@ -251,6 +246,15 @@ int main(int argc, char** argv) {
             {
                 d->qpos[j] = qpos[j];
             }
+            auto quat = yaw_to_quat(qpos[3], d);
+            d->qpos[3] = quat.w();
+            d->qpos[4] = quat.x();
+            d->qpos[5] = quat.y();
+            d->qpos[6] = quat.z();
+
+            // set_body_yaw(body2_id, qpos[3], d);
+            // std::cout << "eval(u): " << qpos[3] << std::endl;
+            // std::cout << "eval(u): " << quat << std::endl;
         }
 
         mjr_render(viewport, &scn, &con);

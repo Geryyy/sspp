@@ -6,6 +6,7 @@
 #define TASK_SPACE_PLANNER_H
 
 #include "Gradient.h"
+#include <utility>
 #include <vector>
 #include <Eigen/Core>
 #include <unsupported/Eigen/Splines>
@@ -15,7 +16,7 @@
 #include "mujoco/mujoco.h"
 #include "Timer.h"
 #include <random>
-
+#include "utility.h"
 
 #define PROFILE_TIME 0
 
@@ -36,7 +37,7 @@ namespace tsp
         Point coll_point;
 
         CollisionPoint(double spline_param, double coll_dist, Point coll_point)
-            : spline_param(spline_param), collision_distance(coll_dist), coll_point(coll_point)
+            : spline_param(spline_param), collision_distance(coll_dist), coll_point(std::move(coll_point))
         {
         }
     };
@@ -49,7 +50,7 @@ namespace tsp
         std::vector<GradientStepType> gradient_steps;
         SolverStatus status;
 
-        PathCandidate(Point via_point, std::vector<GradientStepType> gradient_steps, SolverStatus status) : via_point(via_point), gradient_steps(gradient_steps), status(status) {}
+        PathCandidate(Point via_point, std::vector<GradientStepType> gradient_steps, SolverStatus status) : via_point(std::move(via_point)), gradient_steps(std::move(gradient_steps)), status(status) {}
     };
 
     /* TODO: add start_derivative_ */
@@ -62,7 +63,7 @@ namespace tsp
         mjModel *model_;
         std::vector<mjData *> data_copies_;
         std::vector<mjData *> data_copies2_;
-        char error_buffer_[1000]; // Buffer for storing MuJoCo error messages
+        char error_buffer_[1000]{}; // Buffer for storing MuJoCo error messages
         std::vector<double> param_vec;
         std::vector<Point> via_points;
         // std::vector<CollisionPoint> coll_pts;
@@ -74,7 +75,7 @@ namespace tsp
         std::vector<Point> sampled_via_pts_;
 
     public:
-        TaskSpacePlanner(mjModel *model)
+        explicit TaskSpacePlanner(mjModel *model)
             : model_(model), via_points(), param_vec()
         {
             mjData* data_ = mj_makeData(model_);
@@ -85,7 +86,7 @@ namespace tsp
             }
         }
 
-        TaskSpacePlanner(const std::string &xml_string) : via_points(), param_vec()
+        explicit TaskSpacePlanner(const std::string &xml_string) : via_points(), param_vec()
         {
             // Parse the model from the XML string
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
@@ -122,6 +123,7 @@ namespace tsp
             failed_candidates_.clear();
             sampled_via_pts_.clear();
         }
+
 
         Spline initializePath(const Point &start, const Point &end, const Point &end_derivative, int num_points = 3)
         {
@@ -167,7 +169,7 @@ namespace tsp
             return spline;
         }
 
-        Point get_random_point(const Point &mean, const Point &stddev)
+        static Point get_random_point(const Point &mean, const Point &stddev)
         {
             static std::random_device rd;
             static std::mt19937 gen(rd());
@@ -180,27 +182,27 @@ namespace tsp
             return pt;
         }
 
-        Point evaluate(double u, const Spline &spline)
+        static Point evaluate(double u, const Spline &spline)
         {
             return spline(u);
         }
 
-        Point evaluate(double u) const
+        [[nodiscard]] Point evaluate(double u) const
         {
             return path_spline_(u);
         }
 
-        std::vector<Point> get_via_pts() const
+        [[nodiscard]] std::vector<Point> get_via_pts() const
         {
             return via_points;
         }
 
-        Spline::ControlPointVectorType get_ctrl_pts() const
+        [[nodiscard]] Spline::ControlPointVectorType get_ctrl_pts() const
         {
             return path_spline_.ctrls();
         }
 
-        double get_geom_center_distance(int contact_id, mjData *data)
+        static double get_geom_center_distance(int contact_id, mjData *data)
         {
             int geom1_id = data->contact[contact_id].geom1;
             int geom2_id = data->contact[contact_id].geom2;
@@ -210,7 +212,7 @@ namespace tsp
             return (geom2_center - geom1_center).norm();
         }
 
-        bool check_collision_point(const Point pt)
+        bool check_collision_point(const Point& pt)
         {
             mjData *mj_data = this->data_copies_[0];
             Point point = pt;
@@ -298,9 +300,15 @@ namespace tsp
                     double u = static_cast<double>(i) / eval_cnt;
                     Point point = spline(u);
 
-                    for (int j = 0; j < kDOF; ++j) {
+                    for (int j = 0; j < 3; ++j) {
                         mj_data->qpos[j] = point(j);
                     }
+                    auto quat = yaw_to_quat(point[3], mj_data);
+                    mj_data->qpos[3] = quat.w();
+                    mj_data->qpos[4] = quat.x();
+                    mj_data->qpos[5] = quat.y();
+                    mj_data->qpos[6] = quat.z();
+
                     mj_forward(model_, mj_data);
 
                     for (int i = 0; i < mj_data->ncon; i++) {
@@ -408,7 +416,7 @@ namespace tsp
 #pragma omp for schedule(dynamic, 1) nowait
                 for (int i = 0; i < sample_count; ++i)
                 {
-                    const Point via_candidate = via_point_candidates[i];
+                    const Point& via_candidate = via_point_candidates[i];
 
                     // Lambda function for collision cost
                     auto collision_cost_lambda = [&](const Point &via_pt)
@@ -582,7 +590,7 @@ namespace tsp
             return sampled_via_pts_;
         }
 
-        std::vector<Point> get_path_pts(const Spline &spline, const int pts_cnt = 10)
+        static std::vector<Point> get_path_pts(const Spline &spline, const int pts_cnt = 10)
         {
             std::vector<Point> pts;
             for (int i = 0; i < pts_cnt; i++)
@@ -595,7 +603,7 @@ namespace tsp
             return pts;
         }
 
-        std::vector<Point> get_path_pts(const int pts_cnt = 10)
+        [[nodiscard]] std::vector<Point> get_path_pts(const int pts_cnt = 10) const
         {
             std::vector<Point> pts;
             for (int i = 0; i < pts_cnt; i++)
@@ -609,7 +617,7 @@ namespace tsp
         }
 
     private:
-        void initializeDataCopies(mjData *data)
+        void initializeDataCopies(const mjData *data)
         {
             int max_threads = omp_get_max_threads();
             data_copies_.resize(max_threads, nullptr);
