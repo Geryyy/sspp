@@ -75,8 +75,14 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
-# Python bindings
-pybind11_add_module(_sspp src/python_bindings.cpp)
+# SampledSplinePathPlanner bindings
+pybind11_add_module(_sspp src/sspp_bindings.cpp)
 target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
 install(TARGETS _sspp DESTINATION sspp)
+
+# TaskSpacePlanner bindings
+pybind11_add_module(_tsp src/tsp_bindings.cpp)
+target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
+
+install(TARGETS _tsp DESTINATION sspp)
