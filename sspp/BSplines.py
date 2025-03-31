@@ -216,10 +216,10 @@ def test_casadi_bspline():
 
 
 def test_numpy_bspline():
-  n_ctrl_pts = 7
-  k = 1
+  n_ctrl_pts = 3
+  k = 2
   q_start = np.ones((9,))*0.5
-  q_end = np.ones((9,))*0.5
+  q_end = np.ones((9,))*0.4
   via_pts = (np.linspace(q_start, q_end, n_ctrl_pts))
   # compute bspline
   ctr_pts, knot_vec = compute_control_points(via_pts, k)
@@ -239,8 +239,47 @@ def test_numpy_bspline():
   plt.show()
 
 
+def test_scipy_bspline():
+    import numpy as np
+    from scipy.interpolate import BSpline
+    import matplotlib.pyplot as plt
+
+    n_ctrl_pts = 3
+    k = 2
+    q_start = np.ones((9,))*0.5
+    q_end = np.ones((9,))*0.4
+    via_pts = (np.linspace(q_start, q_end, n_ctrl_pts))
+    # compute bspline
+    ctr_pts, knot_vec = compute_control_points(via_pts, k)
+
+    print("ctr_pts: \n", ctr_pts)
+    print("knot_vec: \n", knot_vec)
+
+    # Create the B-spline object
+    bspline = BSpline(knot_vec, ctr_pts.T, k)
+
+    # Evaluate the B-spline at the given points
+    points = np.linspace(0, 3, 100)
+    values = bspline(points)
+
+    # Plot the B-spline
+    plt.plot(ctr_pts[:, 0], ctr_pts[:, 1], 'ro-', label='Control Points')
+    plt.plot(values[:, 0], values[:, 1], 'b-', label='B-Spline')
+    plt.xlabel('X')
+    plt.ylabel('Y')
+    plt.title('B-Spline Interpolation')
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+
+
+
 if __name__ == '__main__':
     # test_bspline()
-    test_casadi_bspline()
+    # test_casadi_bspline()
 
     test_numpy_bspline()
+
+    # test_scipy_bspline()
