@@ -196,18 +196,22 @@ import matplotlib.pyplot as plt
 
 def test_casadi_bspline():
     # Step 1: Initialize control points
-    q0 = np.ones(7)
-    q1 = np.ones(7)
-    c = np.linspace(q0, q1, 7)  # 7 control points from np.zeros(7) to np.ones(7)
+    q0 = np.array([0, 5, 10, 15])
+    q1 = np.array([1, 6, 11, 16])
+    c = np.linspace(q0, q1, 3)  # 7 control points from np.zeros(7) to np.ones(7)
     
     # Step 2: Generate the knot vector
     n_control_points = len(c)  # Number of control points
-    k = 3  # Spline order
+    k = 2  # Spline order
     t = knot_vector(n_control_points, k)
 
     # Step 3: Evaluate the B-spline using CasADi
-    theta = np.linspace(0, 1, 100)  # Evaluation points
+    theta = np.linspace(0, 1, 10)  # Evaluation points
     y = np.array([casadiBspline(x, t, c, k) for x in theta])
+
+    print("t: ", t)
+    print("c: ", c)
+    print("y: ", y)
 
     # Step 4: Plot the B-spline
     plt.plot(theta, y.squeeze())
@@ -278,8 +282,8 @@ def test_scipy_bspline():
 
 if __name__ == '__main__':
     # test_bspline()
-    # test_casadi_bspline()
+    test_casadi_bspline()
 
-    test_numpy_bspline()
+    # test_numpy_bspline()
 
     # test_scipy_bspline()
