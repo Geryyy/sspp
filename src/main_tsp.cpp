@@ -93,13 +93,14 @@ int main(int argc, char** argv) {
     using TSP = tsp::TaskSpacePlanner;
     TSP path_planner(m);
     using Point = tsp::Point;
-    tsp::Spline init_spline;
+    // tsp::Spline init_spline;
     Point end_derivative;
     end_derivative << 0,0,-1, 0;
 
-    init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
+    // init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
 
     Point limits;
+    bool flag_end_deriv = true;
     limits << 1,1,1, 1.5708;
     double sigma = 0.1;
     int sample_cnt = 20;
@@ -118,13 +119,19 @@ int main(int argc, char** argv) {
 
 
     std::vector<double> duration_vec;
-    constexpr int N = 100;
+    constexpr int N = 1;
     for(int i = 0; i < N; i++) {
         path_planner.reset();
         exec_timer.tic();
 
-        path_candidates = path_planner.plan(start_pos,
-            end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+        if(flag_end_deriv) {
+            path_candidates = path_planner.plan_with_endderivatives(start_pos,
+                end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+        }
+        else {
+            path_candidates = path_planner.plan(start_pos, end_pos, sigma, limits,
+                sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+        }
 
         auto duration = exec_timer.toc();
         duration_vec.push_back(static_cast<double>(duration/1e6));
@@ -162,7 +169,13 @@ int main(int argc, char** argv) {
 //    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
 
-    return 0;
+
+    std::cout << "Ctrl Points of Spline: " << path_planner.get_ctrl_pts() <<std::endl;
+    std::cout << "Ctrl Points of Spline Shape: " << path_planner.get_ctrl_pts().cols() <<std::endl;
+
+    std::cout << "Knot Vector of Spline: " << path_planner.get_knot_vector() <<std::endl;
+
+    // return 0;
     // TEST purpose
     for(int i = 0; i <3; i++) {
         d->qpos[i] = end_pos[i];
