@@ -23,6 +23,7 @@ PYBIND11_MODULE(_tsp, m) {
         // Bind the version with end_derivative
         .def("initializePathWithEndDerivative", py::overload_cast<const Point &, const Point &, const Point &, int>(&TaskSpacePlanner::initializePath),
              py::arg("start"), py::arg("end"), py::arg("end_derivative"), py::arg("num_points") = 3)
+        .def("initializePathFromViaPoints", py::overload_cast<const std::vector<Point> &>(&TaskSpacePlanner::initializePath), py::arg("via_points"))
         .def("evaluate", py::overload_cast<double>(&TaskSpacePlanner::evaluate, py::const_), py::arg("u"))
      //    .def("evaluate", py::overload_cast<double, const Spline &>(&TaskSpacePlanner::evaluate),
      //         py::arg("u"), py::arg("spline"))
@@ -39,8 +40,12 @@ PYBIND11_MODULE(_tsp, m) {
           py::arg("start"), py::arg("end"), py::arg("sigma"),
           py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
           py::arg("gd_iterations") = 10, py::arg("init_points") = 3)
-        .def("plan", &TaskSpacePlanner::plan_with_endderivatives,
+        .def("plan_with_end_derivatives", &TaskSpacePlanner::plan_with_end_derivatives,
              py::arg("start"), py::arg("end"), py::arg("end_derivative"), py::arg("sigma"),
+             py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
+             py::arg("gd_iterations") = 10, py::arg("init_points") = 3)
+        .def("plan_with_via_pts", &TaskSpacePlanner::plan_with_via_pts,
+             py::arg("via_pts"), py::arg("sigma"),
              py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
              py::arg("gd_iterations") = 10, py::arg("init_points") = 3);
 }

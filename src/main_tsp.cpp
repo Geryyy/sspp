@@ -18,9 +18,9 @@ using namespace visu;
 
 // Path to the XML file for the MuJoCo model
 // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/planner.xml";
- // const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
+  const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 // const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/planner.xml";
-const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
+//const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
 mjModel* m = NULL;                  // MuJoCo model
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         exec_timer.tic();
 
         if(flag_end_deriv) {
-            path_candidates = path_planner.plan_with_endderivatives(start_pos,
+            path_candidates = path_planner.plan_with_end_derivatives(start_pos,
                 end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
         }
         else {
@@ -157,7 +157,6 @@ int main(int argc, char** argv) {
     std::cout << "Min: " << min_val << " ms" << std::endl;
     std::cout << "Max: " << max_val << " ms" << std::endl;
 
-
     // std::cerr << "duration [ms]: " << duration/1e6 << std::endl;
 
     failed_candidates = path_planner.get_failed_path_candidates();
@@ -168,12 +167,24 @@ int main(int argc, char** argv) {
 //        std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
 //    }
     std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
-
-
     std::cout << "Ctrl Points of Spline: " << path_planner.get_ctrl_pts() <<std::endl;
     std::cout << "Ctrl Points of Spline Shape: " << path_planner.get_ctrl_pts().cols() <<std::endl;
-
     std::cout << "Knot Vector of Spline: " << path_planner.get_knot_vector() <<std::endl;
+
+    // plan again
+    auto via_pts_init = path_planner.get_via_pts();
+    path_candidates = path_planner.plan_with_via_pts(via_pts_init,sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+
+    std::cout << "-- second planning attempt with via_pts initialization --" << std::endl;
+    std::cout << "nr of succesful path candidates: " << path_candidates.size() << std::endl;
+//    for(int i = 0; i < path_candidates.size(); i++) {
+//        std::cout << "candidate " << i << " gd steps: " << path_candidates[i].gradient_steps.size() << std::endl;
+//    }
+    std::cout << "nr of failed path candidates: " << path_planner.get_failed_path_candidates().size() << std::endl;
+    std::cout << "Ctrl Points of Spline: " << path_planner.get_ctrl_pts() <<std::endl;
+    std::cout << "Ctrl Points of Spline Shape: " << path_planner.get_ctrl_pts().cols() <<std::endl;
+    std::cout << "Knot Vector of Spline: " << path_planner.get_knot_vector() <<std::endl;
+
 
     // return 0;
     // TEST purpose

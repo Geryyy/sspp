@@ -163,6 +163,28 @@ namespace tsp {
             return spline;
         }
 
+        Spline initializePath(const std::vector<Point> &via_pts) {
+            param_vec.clear();
+            via_points.clear();
+
+            // linear placement of via points from start to end
+            size_t num_points = via_pts.size();
+            for (int i = 0; i < num_points; ++i) {
+                double t = static_cast<double>(i) / (num_points - 1);
+                param_vec.push_back(t);
+                via_points.push_back(via_pts[i]);
+            }
+            Eigen::Map<Eigen::VectorXd> u_knots(param_vec.data(), num_points);
+            Eigen::MatrixXd via_mat(kDOF, num_points);
+            for (size_t i = 0; i < via_points.size(); i++) {
+                via_mat.block<kDOF, 1>(0, i) = via_points[i];
+            }
+
+            Spline spline = SplineFitter::Interpolate(via_mat, kSplineDegree, u_knots);
+            return spline;
+        }
+
+
         Spline path_from_via_pt(const Point &via_pt) {
             Eigen::Map<Eigen::VectorXd> u_knots(param_vec.data(), param_vec.size());
             Eigen::Map<Eigen::MatrixXd> via_mat(reinterpret_cast<double *>(via_points.data()),
@@ -486,8 +508,7 @@ namespace tsp {
         }
 
         // Helper function containing the core planning logic
-        std::vector<PathCandidate> core_plan(const Point &start,
-                                             const Point &end,
+        std::vector<PathCandidate> core_plan(const std::vector<Point> &via_pts,
                                              const std::optional<Point> &end_derivative_opt,
                                              double sigma, const Point &limits,
                                              int sample_count,
@@ -502,11 +523,22 @@ namespace tsp {
 #ifdef PROFILE_TIME
             auto init_start_time = std::chrono::high_resolution_clock::now();
 #endif
+            if (via_pts.size() < 2) {
+                throw std::runtime_error("Not enough via points");
+            }
+
+            const Point start = via_pts.front();
+            const Point end  = via_pts.back();
             Spline init_spline;
-            if (end_derivative_opt.has_value()) {
-                init_spline = initializePath(start, end, end_derivative_opt.value(), init_points);
-            } else {
-                init_spline = initializePath(start, end, init_points);
+            if (via_pts.size() > 2){
+                init_spline = initializePath(via_pts);
+            }
+            else {
+                if (end_derivative_opt.has_value()) {
+                    init_spline = initializePath(start, end, end_derivative_opt.value(), init_points);
+                } else {
+                    init_spline = initializePath(start, end, init_points);
+                }
             }
             path_spline_ = init_spline;
             Point init_via_pt = via_points[1];
@@ -584,7 +616,7 @@ namespace tsp {
         }
 
     public:
-        std::vector<PathCandidate> plan_with_endderivatives(const Point &start,
+        std::vector<PathCandidate> plan_with_end_derivatives(const Point &start,
                                                             const Point &end, const Point &end_derivative, double sigma,
                                                             const Point &limits,
                                                             const int sample_count = 50,
@@ -592,7 +624,19 @@ namespace tsp {
                                                             const int gd_iterations = 10,
                                                             const int init_points = 3) {
             flag_endderivatives = true;
-            return core_plan(start, end, end_derivative, sigma, limits, sample_count, check_points, gd_iterations,
+            std::vector<Point> via_pts = {start, end};
+            return core_plan(via_pts, end_derivative, sigma, limits, sample_count, check_points, gd_iterations,
+                             init_points);
+        }
+
+        std::vector<PathCandidate> plan_with_via_pts(const std::vector<Point> via_pts,
+                                        double sigma, const Point &limits,
+                                        const int sample_count = 50,
+                                        const int check_points = 50,
+                                        const int gd_iterations = 10,
+                                        const int init_points = 3) {
+            flag_endderivatives = false;
+            return core_plan(via_pts, std::nullopt, sigma, limits, sample_count, check_points, gd_iterations,
                              init_points);
         }
 
@@ -603,7 +647,8 @@ namespace tsp {
                                         const int gd_iterations = 10,
                                         const int init_points = 3) {
             flag_endderivatives = false;
-            return core_plan(start, end, std::nullopt, sigma, limits, sample_count, check_points, gd_iterations,
+            std::vector<Point> via_pts = {start, end};
+            return core_plan(via_pts, std::nullopt, sigma, limits, sample_count, check_points, gd_iterations,
                              init_points);
         }
 
