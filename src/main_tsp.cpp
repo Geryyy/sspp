@@ -36,6 +36,7 @@ std::vector<tsp::PathCandidate> failed_candidates;
 
 
 int main(int argc, char** argv) {
+//    omp_set_num_threads(4);
     Timer exec_timer;
     // Print MuJoCo version
     std::cout << "MuJoCo version: " << mj_version() << std::endl;

@@ -23,7 +23,7 @@ namespace tsp {
 
         Point compute() const {
             Point grad;
-#pragma omp parallel for
+
             for (int i = 0; i < 3; ++i) {
                 Point delta_vec = Point::Zero();
                 delta_vec[i] = delta[i];

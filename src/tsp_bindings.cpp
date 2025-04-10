@@ -30,8 +30,8 @@ PYBIND11_MODULE(_tsp, m) {
         .def("get_via_pts", &TaskSpacePlanner::get_via_pts, py::return_value_policy::reference_internal)
         .def("get_ctrl_pts", &TaskSpacePlanner::get_ctrl_pts, py::return_value_policy::reference_internal)
           .def("get_knot_vector", &TaskSpacePlanner::get_knot_vector, py::return_value_policy::reference_internal)
-        .def("check_collision", &TaskSpacePlanner::check_collision,
-             py::arg("spline"), py::arg("num_samples"))
+//        .def("check_collision", &TaskSpacePlanner::check_collision,
+//             py::arg("spline"), py::arg("num_samples"))
         .def("computeArcLength", &TaskSpacePlanner::computeArcLength,
              py::arg("spline"), py::arg("check_points"))
         .def("findBestPath", &TaskSpacePlanner::findBestPath,

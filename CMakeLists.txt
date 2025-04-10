@@ -18,6 +18,7 @@ endif()
 # Optimization flags
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -march=native -funroll-loops -ftree-vectorize")
 
+#set( CMAKE_VERBOSE_MAKEFILE on )
 
 #set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -O0")
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0")
@@ -56,7 +57,7 @@ add_executable(${PROJECT_NAME} src/main_tsp.cpp include/Timer.h include/tsp.h in
         include/visu.h
         src/visu.cpp
         include/ui.h
-        src/ui.cpp)
+        src/ui.cpp include/Collision.h)
 
 # Link libraries
 target_link_libraries(${PROJECT_NAME}
