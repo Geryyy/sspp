@@ -89,10 +89,11 @@ int main(int argc, char** argv) {
     auto body2_id = get_body_id(m, "block2");
     auto block2_yaw = get_body_yaw(body2_id, d);
     std::cout << "block2 yaw: " << block2_yaw << std::endl;
+    
     // static sampling path planner
-
+    std::string body_name = "block1"; // collision body 
     using TSP = tsp::TaskSpacePlanner;
-    TSP path_planner(m);
+    TSP path_planner(m, body_name);
     using Point = tsp::Point;
     // tsp::Spline init_spline;
     Point end_derivative;
@@ -271,7 +272,7 @@ int main(int argc, char** argv) {
             {
                 d->qpos[j] = qpos[j];
             }
-            auto quat = yaw_to_quat(qpos[3], d);
+            auto quat = yaw_to_quat(qpos[3]);
             d->qpos[3] = quat.w();
             d->qpos[4] = quat.x();
             d->qpos[5] = quat.y();

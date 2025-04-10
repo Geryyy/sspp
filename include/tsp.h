@@ -75,26 +75,26 @@ namespace tsp {
         bool flag_endderivatives = false;
 
     public:
-        explicit TaskSpacePlanner(mjModel *model)
+        explicit TaskSpacePlanner(mjModel *model, std::string body_name)
             : model_(model), via_points(), param_vec() {
-            init_collision_env();
+            init_collision_env(body_name);
         }
 
-        explicit TaskSpacePlanner(const std::string &xml_string) : via_points(), param_vec() {
+        explicit TaskSpacePlanner(const std::string &xml_string, std::string body_name) : via_points(), param_vec() {
             // Parse the model from the XML string
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
             if (!model_) {
                 throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
             }
 
-            init_collision_env();
+            init_collision_env(body_name);
         }
 
         ~TaskSpacePlanner() {}
 
-        void init_collision_env(){
+        void init_collision_env(std::string body_name){
             for(int i = 0; i < omp_get_max_threads(); i++) {
-                collision_env_vec.push_back(std::make_shared<Collision<Point>>(model_));
+                collision_env_vec.push_back(std::make_shared<Collision<Point>>(body_name, model_));
             }
 
             // std::cout << "Collision environment vector size: " << collision_env_vec.size() << std::endl;

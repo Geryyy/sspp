@@ -50,7 +50,7 @@ inline double get_body_yaw(int geom_id, mjData *mj_data) {
 }
 
 // Function to add a yaw angle to the existing orientation of a geom
-inline Eigen::Quaterniond yaw_to_quat( double yaw_angle, mjData *mj_data) {
+inline Eigen::Quaterniond yaw_to_quat( double yaw_angle) {
     // Compute new yaw rotation (around Z-axis)
     double yaw_radians = yaw_angle;// * M_PI / 180.0; // Convert degrees to radians
     Eigen::AngleAxisd yaw_rotation(yaw_radians, Eigen::Vector3d::UnitZ());
