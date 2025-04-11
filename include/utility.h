@@ -67,6 +67,53 @@ namespace Utility
         return info;
     }
 
+    inline void print_body_info(const mjModel* m) {
+        if (!m) {
+            std::cerr << "Error: MuJoCo model is null." << std::endl;
+            return;
+        }
+
+        int n_bodies = m->nbody;
+        std::cout << "Number of bodies: " << n_bodies << std::endl;
+
+        for (int i = 0; i < n_bodies; ++i) {
+            int body_id = i;
+            const char* body_name = mj_id2name(m, mjOBJ_BODY, body_id);
+            int joint_id = m->body_jntadr[body_id];
+            mjtJoint joint_type = mjJNT_FREE;
+            const char* joint_type_str = "none";
+
+            if (joint_id != -1) {
+                joint_type = static_cast<mjtJoint>(m->jnt_type[joint_id]);
+                switch (joint_type) {
+                    case mjJNT_FREE:
+                        joint_type_str = "free";
+                        break;
+                    case mjJNT_HINGE:
+                        joint_type_str = "hinge";
+                        break;
+                    case mjJNT_SLIDE:
+                        joint_type_str = "slide";
+                        break;
+                    case mjJNT_BALL:
+                        joint_type_str = "ball";
+                        break;
+                    default:
+                        joint_type_str = "unknown";
+                        break;
+                }
+            }
+
+            std::cout << "Body ID: " << body_id << ", Name: ";
+            if (body_name) {
+                std::cout << body_name;
+            } else {
+                std::cout << "(unnamed)";
+            }
+            std::cout << ", Joint Type: " << joint_type_str << std::endl;
+        }
+    }
+
     // Forward declaration of yaw_to_quat
     Eigen::Quaterniond yaw_to_quat(double yaw_angle);
 

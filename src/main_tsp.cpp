@@ -24,6 +24,7 @@ using namespace Utility;
 using Point = tsp::Point;
 
 // Path to the XML file for the MuJoCo model
+// "/home/geraldebmer/repos/robocrane/mujoco_env_builder/presets/robocrane/robocrane.xml" "block_cyan"
 const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
@@ -90,7 +91,7 @@ int main(int argc, char** argv) {
     Timer exec_timer;
     std::vector<double> duration_vec_first;
     std::vector<double> duration_vec_second;
-    constexpr int N = 100;
+    constexpr int N = 1;
 
     // Initialize MuJoCo
     std::cout << "MuJoCo version: " << mj_version() << std::endl;
@@ -104,6 +105,9 @@ int main(int argc, char** argv) {
         throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
     }
     d = mj_makeData(m);
+
+//    Utility::print_body_info(m);
+//    return 0;
 
     std::cout << "Taskspace Planner" << std::endl;
     std::cout << "DoFs: " << m->nq << std::endl;
