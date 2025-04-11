@@ -394,12 +394,12 @@ namespace tsp {
                                              int check_points,
                                              int gd_iterations,
                                              int init_points) {
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto start_time = std::chrono::high_resolution_clock::now();
 #endif
             // coll_pts.clear();
             /* initialize straight line */
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto init_start_time = std::chrono::high_resolution_clock::now();
 #endif
             if (via_pts.size() < 2) {
@@ -447,32 +447,32 @@ namespace tsp {
 
             sampled_via_pts_ = via_point_candidates;
 
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto init_end_time = std::chrono::high_resolution_clock::now();
             auto init_duration = std::chrono::duration_cast<std::chrono::microseconds>(init_end_time - init_start_time);
             std::cerr << "plan.Initialize duration [ms]: " << init_duration.count() / 1e3 << std::endl;
 #endif
 
             /* optimize candidates for collision */
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto opt_start_time = std::chrono::high_resolution_clock::now();
 #endif
             collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
                                    sample_count, check_points, gd_iterations);
 
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto opt_end_time = std::chrono::high_resolution_clock::now();
             auto opt_duration = std::chrono::duration_cast<std::chrono::microseconds>(opt_end_time - opt_start_time);
             std::cerr << "Collision Optimization duration [ms]: " << opt_duration.count() / 1e3 << std::endl;
 #endif
 
             /* find best path */
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto find_best_start_time = std::chrono::high_resolution_clock::now();
 #endif
             findBestPath(successful_candidates_, path_spline_, check_points);
 
-#ifdef PROFILE_TIME
+#if PROFILE_TIME
             auto find_best_end_time = std::chrono::high_resolution_clock::now();
             auto find_best_duration = std::chrono::duration_cast<std::chrono::microseconds>(
                 find_best_end_time - find_best_start_time);
