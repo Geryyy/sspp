@@ -23,8 +23,8 @@ using namespace visu;
 //const std::string modelFile = "/home/gebmer/repos/sspp/mjcf/stacking.xml";
 
 // MuJoCo data structures
-mjModel* m = NULL;                  // MuJoCo model
-mjData* d = NULL;                   // MuJoCo data
+mjModel* m = nullptr;                  // MuJoCo model
+mjData* d = nullptr;                   // MuJoCo data
 mjvCamera cam;                      // abstract camera
 mjvOption opt;                      // visualization options
 mjvScene scn;                       // abstract scene
@@ -34,8 +34,10 @@ mjrContext con;                     // custom GPU context
 std::vector<tsp::PathCandidate> path_candidates;
 std::vector<tsp::PathCandidate> failed_candidates;
 
+using namespace Utility;
 
 int main(int argc, char** argv) {
+
 //    omp_set_num_threads(4);
     Timer exec_timer;
     // Print MuJoCo version
@@ -53,53 +55,32 @@ int main(int argc, char** argv) {
 
     d = mj_makeData(m);
 
-    // Get the maximum number of threads available
-    int max_threads = omp_get_max_threads();
-
-    // Get the number of processors available
-    int num_procs = omp_get_num_procs();
-
-    // Get the current number of threads in use
-    int num_threads;
-#pragma omp parallel
-    {
-#pragma omp single
-        num_threads = omp_get_num_threads();
-    }
-
-    std::cout << "Maximum threads available: " << max_threads << std::endl;
-    std::cout << "Number of processors available: " << num_procs << std::endl;
-    std::cout << "Current number of threads in use: " << num_threads << std::endl;
-
-
     std::cout << "Taskspace Planner" << std::endl;
     std::cout << "DoFs: " << m->nq << std::endl;
-    // std::cout << "Jacobian sparse: " << mj_isSparse(m) << std::endl;
-    // std::cout << "jacobian dimension: " << d->nJ << std::endl;
 
     print_menue();
 
     mj_forward(m, d);
     mj_collision(m,d);
 
-    auto block1_pos = get_body_position(m, d, "block1");
-    auto block2_pos = get_body_position(m, d, "block2");
-    // std::cout << "block1_pos: " << block1_pos.transpose() << std::endl;
-    // std::cout << "block2_pos: " << block2_pos.transpose() << std::endl;
-    auto body2_id = get_body_id(m, "block2");
-    auto block2_yaw = get_body_yaw(body2_id, d);
-    std::cout << "block2 yaw: " << block2_yaw << std::endl;
-    
+//    auto block1_pos = get_body_position(m, d, "block1");
+//    auto block2_pos = get_body_position(m, d, "block2");
+//    auto block3_pos = get_body_position(m, d, "block3");
+//    // std::cout << "block1_pos: " << block1_pos.transpose() << std::endl;
+//    // std::cout << "block2_pos: " << block2_pos.transpose() << std::endl;
+//    auto body2_id = get_body_id(m, "block2");
+//    auto block2_yaw = get_body_yaw(body2_id, d);
+//    std::cout << "block2 yaw: " << block2_yaw << std::endl;
+
     // static sampling path planner
-    std::string body_name = "block1"; // collision body 
+    std::string coll_body_name = "block1"; // collision body
+    auto coll_body_info = get_free_body_joint_info(coll_body_name, m);
     using TSP = tsp::TaskSpacePlanner;
-    TSP path_planner(m, body_name);
+    TSP path_planner(m, coll_body_name);
     using Point = tsp::Point;
     // tsp::Spline init_spline;
     Point end_derivative;
     end_derivative << 0,0,-1, 0;
-
-    // init_spline = path_planner.initializePath(Point::Zero(), Point::Ones(), end_derivative, 3);
 
     Point limits;
     bool flag_end_deriv = true;
@@ -109,15 +90,12 @@ int main(int argc, char** argv) {
     int check_cnt = 20;
     int gd_iterations = 10;
     int ctrl_cnt = 3; // THIS MUST BE CONSTANT: start, via, end!!
-    Point end_pos;
-    end_pos.block<3,1>(0,0) = block2_pos;
-    end_pos[3] = block2_yaw;
-    end_pos[2] += 0.01;
+
+
+    Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
+    end_pt[2] += 0.01;
     Point start_pos;
     start_pos << 0.5,0.5,0.5, 1.5708;
-    // start_pos = block1_pos;
-//    start_pos[2] += 0.5;
-//    start_pos << 1,1,1;
 
 
     std::vector<double> duration_vec;
@@ -128,10 +106,10 @@ int main(int argc, char** argv) {
 
         if(flag_end_deriv) {
             path_candidates = path_planner.plan_with_end_derivatives(start_pos,
-                end_pos, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+                end_pt, end_derivative, sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
         }
         else {
-            path_candidates = path_planner.plan(start_pos, end_pos, sigma, limits,
+            path_candidates = path_planner.plan(start_pos, end_pt, sigma, limits,
                 sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
         }
 
@@ -190,9 +168,7 @@ int main(int argc, char** argv) {
 
     // return 0;
     // TEST purpose
-    for(int i = 0; i <3; i++) {
-        d->qpos[i] = end_pos[i];
-    }
+    Utility::mj_set_point(end_pt, coll_body_info, d);
 
     auto via_pts = path_planner.get_via_pts();
 
@@ -267,20 +243,8 @@ int main(int argc, char** argv) {
         /* animate block */
         if(vis_animate_block) {
             double u = std::fmod(d->time/10., 1.0);
-            Point qpos = path_planner.evaluate(u);
-            for (int j = 0; j < 3; ++j)
-            {
-                d->qpos[j] = qpos[j];
-            }
-            auto quat = yaw_to_quat(qpos[3]);
-            d->qpos[3] = quat.w();
-            d->qpos[4] = quat.x();
-            d->qpos[5] = quat.y();
-            d->qpos[6] = quat.z();
-
-            // set_body_yaw(body2_id, qpos[3], d);
-            // std::cout << "eval(u): " << qpos[3] << std::endl;
-            // std::cout << "eval(u): " << quat << std::endl;
+            Point pt = path_planner.evaluate(u);
+            Utility::mj_set_point(pt, coll_body_info, d);
         }
 
         mjr_render(viewport, &scn, &con);

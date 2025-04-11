@@ -6,69 +6,30 @@
 #define SSPP_COLLISION_H
 
 #include "mujoco/mujoco.h"
-#include "utility.h"
+#include "utility.h" // Include the updated utility header
 #include <Eigen/Core>
 #include <omp.h>
-
-
-struct BodyJointInfo {
-    int body_id = -1;
-    int jnt_id = -1;
-    int qpos_adr = -1;
-    int type = -1;
-};
 
 template<typename Point>
 class Collision{
     mjModel *mj_model_;
     mjData *mj_data_;
-    BodyJointInfo joint_info;
+    Utility::BodyJointInfo joint_info; // Use the struct from the namespace
 
 public:
     Collision(std::string coll_body_name, mjModel *mj_model) : mj_model_(mj_model){
         mj_data_ = mj_makeData(mj_model_);
-        joint_info = get_free_body_joint_info(coll_body_name, mj_model);
+        joint_info = Utility::get_free_body_joint_info(coll_body_name, mj_model); // Use the namespaced function
     }
 
     ~Collision(){
+        mj_deleteData(mj_data_); // Clean up mjData in the destructor
     }
 
     void set_collision_body(std::string body_name){
-        joint_info = get_free_body_joint_info(body_name, mj_model_);
+        joint_info = Utility::get_free_body_joint_info(body_name, mj_model_); // Use the namespaced function
     }
 
-    
-    BodyJointInfo get_free_body_joint_info(const std::string& body_name, mjModel* m){
-
-        BodyJointInfo info;
-    
-        info.body_id = mj_name2id(m, mjOBJ_BODY, body_name.c_str());
-        if (info.body_id == -1) {
-            std::cerr << "Error: Body with name '" << body_name << "' not found." << std::endl;
-            return info; // Return with invalid body_id
-        }
-    
-        info.jnt_id = m->body_jntadr[info.body_id];
-        if (info.jnt_id == -1) {
-            std::cerr << "Error: Body '" << body_name << "' has no joint." << std::endl;
-            return info; // Return with invalid jnt_id
-        }
-    
-        if (m->jnt_type[info.jnt_id] != mjJNT_FREE) {
-            std::cerr << "Error: Joint of body '" << body_name << "' is not a free joint." << std::endl;
-            return info; // Return with invalid jnt_id
-        }
-    
-        info.qpos_adr = m->jnt_qposadr[info.jnt_id];
-        info.type = m->jnt_type[info.jnt_id];
-    
-        if (info.type != mjtJoint::mjJNT_FREE) {
-            std::cerr << "Error: Free joint of body '" << body_name << "' does not have 6 degrees of freedom (pos + orientation)." << std::endl;
-            return info; // Return with invalid dof
-        }
-    
-        return info;
-    }
 
     static double get_geom_center_distance(int contact_id, mjData *data) {
         int geom1_id = data->contact[contact_id].geom1;
@@ -82,41 +43,38 @@ public:
     }
 
 
-    void mj_set_point(const Point &point, mjData *mj_data){
-        if (point.size() != 4) {
-            std::cerr << "Error: Input point must have 4 elements (x, y, z, yaw) for a free joint." << std::endl;
-            return;
-        }
-
-        if (joint_info.body_id == -1 || joint_info.jnt_id == -1 || joint_info.qpos_adr == -1 || joint_info.type != mjtJoint::mjJNT_FREE) {
-            return; // An error occurred in get_free_body_joint_info
-        }
-    
-        // Set position
-        for (int i = 0; i < 3; ++i) {
-            mj_data->qpos[joint_info.qpos_adr + i] = point(i);
-        }
-    
-        // Set orientation (yaw to quaternion)
-        Eigen::Quaterniond quat = yaw_to_quat(point(3));
-        mj_data->qpos[joint_info.qpos_adr + 3] = quat.w();
-        mj_data->qpos[joint_info.qpos_adr + 4] = quat.x();
-        mj_data->qpos[joint_info.qpos_adr + 5] = quat.y();
-        mj_data->qpos[joint_info.qpos_adr + 6] = quat.z();
+    void mj_set_point(const Point &point){
+        Utility::mj_set_point(point, joint_info, mj_data_); // Use the namespaced function
     }
 
 
     bool check_collision_point(const Point &pt) {
-        mjData *mj_data = mj_data_;
-        // mjData *mj_data = data_copies_[omp_get_thread_num()];
-        Point point = pt;
+        mj_set_point(pt);
+        mj_forward(mj_model_, mj_data_);
 
-        mj_set_point(point, mj_data);
-        mj_forward(mj_model_, mj_data);
-
-        for (int i = 0; i < mj_data->ncon; i++) {
-            auto col_dist = mj_data->contact[i].dist;
+        for (int i = 0; i < mj_data_->ncon; i++) {
+            auto col_dist = mj_data_->contact[i].dist;
             if (col_dist < -1e-3) {
+
+                int geom1_id = mj_data_->contact[i].geom1;
+                int geom2_id = mj_data_->contact[i].geom2;
+
+                const char* geom1_name = mj_id2name(mj_model_, mjOBJ_GEOM, geom1_id);
+                const char* geom2_name = mj_id2name(mj_model_, mjOBJ_GEOM, geom2_id);
+
+                std::cout << "check_collision_point(): Collision detected!" << std::endl;
+                std::cout << "  Contact distance (col_dist): " << col_dist << std::endl;
+                std::cout << "  Geom 1 ID: " << geom1_id;
+                if (geom1_name) {
+                    std::cout << " (Name: " << geom1_name << ")";
+                }
+                std::cout << std::endl;
+                std::cout << "  Geom 2 ID: " << geom2_id;
+                if (geom2_name) {
+                    std::cout << " (Name: " << geom2_name << ")";
+                }
+                std::cout << std::endl;
+
                 return true;
             }
         }
@@ -124,16 +82,13 @@ public:
     }
 
     double collision_point_cost(const Point &point, bool use_center_dist = true){
+        mj_set_point(point);
+        mj_forward(mj_model_, mj_data_);
+
         double cost = 0.0;
-
-        mjData *mj_data = mj_data_;
-
-        mj_set_point(point, mj_data);
-        mj_forward(mj_model_, mj_data);
-
-        for (int i = 0; i < mj_data->ncon; i++) {
-            double col_dist = mj_data->contact[i].dist;
-            double center_dist = get_geom_center_distance(i, mj_data);
+        for (int i = 0; i < mj_data_->ncon; i++) {
+            double col_dist = mj_data_->contact[i].dist;
+            double center_dist = get_geom_center_distance(i, mj_data_);
 
             if (col_dist < -1e-3) {
                 if (use_center_dist) {
@@ -144,7 +99,6 @@ public:
                 }
             }
         }
-
         return cost;
     }
 

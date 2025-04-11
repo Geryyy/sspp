@@ -77,7 +77,7 @@ namespace tsp {
     public:
         explicit TaskSpacePlanner(mjModel *model, std::string body_name)
             : model_(model), via_points(), param_vec() {
-            init_collision_env(body_name);
+            init_collision_env(std::move(body_name));
         }
 
         explicit TaskSpacePlanner(const std::string &xml_string, std::string body_name) : via_points(), param_vec() {
@@ -87,10 +87,10 @@ namespace tsp {
                 throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
             }
 
-            init_collision_env(body_name);
+            init_collision_env(std::move(body_name));
         }
 
-        ~TaskSpacePlanner() {}
+        ~TaskSpacePlanner() = default;
 
         void init_collision_env(std::string body_name){
             for(int i = 0; i < omp_get_max_threads(); i++) {
@@ -276,10 +276,14 @@ namespace tsp {
             std::vector<PathCandidate> successful_local;
             std::vector<PathCandidate> failed_local;
 
-#pragma omp parallel
+
+#pragma omp parallel default(none) \
+    shared(via_point_candidates, check_points, gd_iterations) \
+    shared(successful_candidates, failed_candidates, sample_count)
             {
                 std::vector<PathCandidate> successful_thread;
                 std::vector<PathCandidate> failed_thread;
+
 
 #pragma omp for schedule(dynamic, 1) nowait
                 for (int i = 0; i < sample_count; ++i) {
