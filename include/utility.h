@@ -176,6 +176,26 @@ namespace Utility
         return q;
     }
 
+
+    inline double quat_to_yaw(const Eigen::Quaterniond& q) {
+        Eigen::Matrix3d rotation_matrix = q.toRotationMatrix();
+        // Extract Euler angles (roll, pitch, yaw) from the rotation matrix
+        // Using the convention ZYX for Euler angles.
+        // yaw (around Z-axis) is the angle we are interested in.
+    
+        // Check for singularities (gimbal lock)
+        if (std::abs(rotation_matrix(2, 0)) >= 1.0) {
+            // Handle the case where pitch is +/- 90 degrees.
+            // In this case, roll and yaw are coupled.
+            // We can arbitrarily set roll to 0 and calculate yaw.
+            return std::atan2(rotation_matrix(0, 1), rotation_matrix(0, 0));
+        } else {
+            // General case:
+            return std::atan2(rotation_matrix(1, 0), rotation_matrix(0, 0));
+        }
+    }
+
+
     template <typename Point>
     inline Point get_body_point(mjModel *m, mjData *d, const std::string &body_name)
     {

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.20)
 project(sspp)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -87,3 +87,36 @@ pybind11_add_module(_tsp src/tsp_bindings.cpp)
 target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
 install(TARGETS _tsp DESTINATION sspp)
+
+
+# Export the CMake package config
+include(CMakePackageConfigHelpers)
+
+# Create the targets file
+install(TARGETS sspp
+        EXPORT ssppTargets
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+        INCLUDES DESTINATION include)
+
+install(DIRECTORY include/
+        DESTINATION include)
+
+# Export targets and config
+install(EXPORT ssppTargets
+        FILE ssppTargets.cmake
+        NAMESPACE sspp::
+        DESTINATION lib/cmake/sspp)
+
+# Generate and install the config file
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ssppConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/ssppConfig.cmake"
+  INSTALL_DESTINATION lib/cmake/sspp
+)
+
+install(FILES
+  "${CMAKE_CURRENT_BINARY_DIR}/ssppConfig.cmake"
+  DESTINATION lib/cmake/sspp
+)
