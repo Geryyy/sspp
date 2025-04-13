@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     }
     d = mj_makeData(m);
 
-//    Utility::print_body_info(m);
+   Utility::print_body_info(m);
 //    return 0;
 
     std::cout << "Taskspace Planner" << std::endl;
@@ -185,10 +185,10 @@ int main(int argc, char** argv) {
     mjr_makeContext(m, &con, mjFONTSCALE_150);
 
     // Install GLFW callbacks
-    glfwSetKeyCallback(window, keyboard);
-    glfwSetCursorPosCallback(window, mouse_move);
-    glfwSetMouseButtonCallback(window, mouse_button);
-    glfwSetScrollCallback(window, scroll);
+    glfwSetKeyCallback(window, keyboard_cb);
+    glfwSetCursorPosCallback(window, mouse_move_cb);
+    glfwSetMouseButtonCallback(window, mouse_button_cb);
+    glfwSetScrollCallback(window, scroll_cb);
 
     const int pts_cnt = 10;
 

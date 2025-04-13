@@ -52,7 +52,7 @@ find_package(OpenMP REQUIRED)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Add executable
-add_executable(${PROJECT_NAME} src/main_tsp.cpp include/Timer.h include/tsp.h include/utility.h
+add_executable(tsp_standalone src/main_tsp.cpp include/Timer.h include/tsp.h include/utility.h
         include/Gradient.h
         include/visu.h
         src/visu.cpp
@@ -60,7 +60,7 @@ add_executable(${PROJECT_NAME} src/main_tsp.cpp include/Timer.h include/tsp.h in
         src/ui.cpp include/Collision.h)
 
 # Link libraries
-target_link_libraries(${PROJECT_NAME}
+target_link_libraries(tsp_standalone
         PUBLIC mujoco::mujoco
         PUBLIC Threads::Threads
         PUBLIC Eigen3::Eigen
@@ -69,11 +69,11 @@ target_link_libraries(${PROJECT_NAME}
 
 # Link gperftools (for memory and CPU profiling)
 if(GPERFTOOLS_LIBRARY)
-    target_link_libraries(${PROJECT_NAME} PUBLIC -ltcmalloc -lprofiler)
+    target_link_libraries(tsp_standalone PUBLIC -ltcmalloc -lprofiler)
 endif()
 
 if(OpenMP_CXX_FOUND)
-    target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
+    target_link_libraries(tsp_standalone PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
 # SampledSplinePathPlanner bindings
@@ -87,6 +87,33 @@ pybind11_add_module(_tsp src/tsp_bindings.cpp)
 target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
 install(TARGETS _tsp DESTINATION sspp)
+
+
+# build library
+
+add_library(sspp STATIC
+    src/visu.cpp
+    src/ui.cpp
+    include/visu.h
+    include/ui.h
+    include/utility.h
+    include/Gradient.h
+    include/Collision.h
+    include/Timer.h
+    include/tsp.h
+)
+
+target_include_directories(sspp
+    PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(sspp
+    PUBLIC mujoco::mujoco
+    PUBLIC Eigen3::Eigen
+    PUBLIC OpenMP::OpenMP_CXX
+)
 
 
 # Export the CMake package config
