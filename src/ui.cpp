@@ -51,7 +51,13 @@ void print_menue() {
 }
 
 // keyboard callback
-void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
+void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods, 
+    mjModel* m, mjData* d, 
+    bool& vis_best_path, bool& vis_succ_candidates,
+    bool& vis_failed_candidates, bool& vis_grad_descent, bool& vis_animate_block,
+    bool& vis_sampled_via_pts,
+    std::vector<tsp::PathCandidate>& path_candidates,
+    std::vector<tsp::PathCandidate>& failed_candidates) {
     // backspace: reset simulation
     if (act==GLFW_PRESS && key==GLFW_KEY_BACKSPACE) {
         mj_resetData(m, d);
@@ -101,7 +107,8 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods) {
 
 
 // mouse button callback
-void mouse_button(GLFWwindow* window, int button, int act, int mods) {
+void mouse_button(GLFWwindow* window, int button, int act, int mods,
+    double& lastx, double& lasty, bool& button_left, bool& button_middle, bool& button_right) {
     // update button state
     button_left = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)==GLFW_PRESS);
     button_middle = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE)==GLFW_PRESS);
@@ -113,7 +120,11 @@ void mouse_button(GLFWwindow* window, int button, int act, int mods) {
 
 
 // mouse move callback
-void mouse_move(GLFWwindow* window, double xpos, double ypos) {
+void mouse_move(GLFWwindow* window, double xpos, double ypos,
+    mjModel* m, mjvScene& scn, mjvCamera& cam,
+    double& lastx, double& lasty,
+    bool& button_left, bool& button_middle, bool& button_right) {
+
     // no buttons down: nothing to do
     if (!button_left && !button_middle && !button_right) {
         return;
@@ -149,7 +160,34 @@ void mouse_move(GLFWwindow* window, double xpos, double ypos) {
 
 
 // scroll callback
-void scroll(GLFWwindow* window, double xoffset, double yoffset) {
+void scroll(GLFWwindow* window, double xoffset, double yoffset, 
+    mjModel* m, mjvScene& scn, mjvCamera& cam) {
     // emulate vertical mouse motion = 5% of window height
     mjv_moveCamera(m, mjMOUSE_ZOOM, 0, -0.05*yoffset, &scn, &cam);
+}
+
+
+// -----
+// GLFW callbacks for keyboard and mouse events
+// -----
+//
+
+void keyboard_cb(GLFWwindow* window, int key, int scancode, int act, int mods){
+    keyboard(window, key, scancode, act, mods, m, d,
+        vis_best_path, vis_succ_candidates,
+        vis_failed_candidates, vis_grad_descent, vis_animate_block,
+        vis_sampled_via_pts,
+        path_candidates, failed_candidates);
+}
+
+void mouse_button_cb(GLFWwindow* window, int button, int act, int mods){
+    mouse_button(window, button, act, mods, lastx, lasty, button_left, button_middle, button_right);
+}
+
+void mouse_move_cb(GLFWwindow* window, double xpos, double ypos){
+    mouse_move(window, xpos, ypos, m, scn, cam, lastx, lasty, button_left, button_middle, button_right);
+}
+
+void scroll_cb(GLFWwindow* window, double xoffset, double yoffset){
+    scroll(window, xoffset, yoffset, m, scn, cam);
 }

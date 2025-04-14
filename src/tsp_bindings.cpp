@@ -14,9 +14,9 @@ PYBIND11_MODULE(_tsp, m) {
         .def("ctrls", &Spline::ctrls, py::return_value_policy::reference_internal);
 
     py::class_<TaskSpacePlanner>(m, "TaskSpacePlanner")
-        .def(py::init([](const std::string &xml_string) {
-            return new TaskSpacePlanner(xml_string);
-        }), py::arg("xml_string"))
+        .def(py::init([](const std::string &xml_string, const std::string &body_name) {
+            return new TaskSpacePlanner(xml_string, body_name);
+        }), py::arg("xml_string"), py::arg("body_name"))
         // Bind the version without end_derivative
         .def("initializePath", py::overload_cast<const Point &, const Point &, int>(&TaskSpacePlanner::initializePath),
              py::arg("start"), py::arg("end"), py::arg("num_points") = 3)
