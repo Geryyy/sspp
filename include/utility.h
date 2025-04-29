@@ -9,7 +9,7 @@
 #include <fstream>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
-#include "tsp.h"
+// #include "tsp.h"
 #include "mujoco/mujoco.h"
 
 namespace Utility
@@ -65,6 +65,35 @@ namespace Utility
         }
 
         return info;
+    }
+
+    inline void set_body_free_joint(const std::string& body_name, mjModel* m, mjData* d,
+                                const Eigen::Vector3d& pos, const Eigen::Quaterniond& quat)
+    {
+        BodyJointInfo info = get_free_body_joint_info(body_name, m);
+
+        if (info.body_id == -1)
+        {
+            std::cerr << "Error: Body '" << body_name << "' not found." << std::endl;
+            return;
+        }
+
+        if (info.qpos_adr + 6 >= m->nq)
+        {
+            std::cerr << "Error: Invalid qpos address for body '" << body_name << "'." << std::endl;
+            return;
+        }
+
+        // Set position
+        d->qpos[info.qpos_adr + 0] = pos.x();
+        d->qpos[info.qpos_adr + 1] = pos.y();
+        d->qpos[info.qpos_adr + 2] = pos.z();
+
+        // Set orientation (quaternion)
+        d->qpos[info.qpos_adr + 3] = quat.w();
+        d->qpos[info.qpos_adr + 4] = quat.x();
+        d->qpos[info.qpos_adr + 5] = quat.y();
+        d->qpos[info.qpos_adr + 6] = quat.z();
     }
 
     inline void print_body_info(const mjModel* m) {
