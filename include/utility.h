@@ -258,6 +258,34 @@ namespace Utility
         return body_point;
     }
 
+
+
+    inline int get_body_pose(mjModel *m, mjData *d, const std::string &body_name, Eigen::Vector3d &ret_pos, Eigen::Quaterniond &ret_quat)
+    {
+        BodyJointInfo joint_info = get_free_body_joint_info(body_name, m);
+
+        if (joint_info.type == mjtJoint::mjJNT_FREE && joint_info.qpos_adr != -1)
+        {
+            ret_pos(0) = d->qpos[joint_info.qpos_adr + 0]; // x
+            ret_pos(1) = d->qpos[joint_info.qpos_adr + 1]; // y
+            ret_pos(2) = d->qpos[joint_info.qpos_adr + 2]; // z
+
+            // Get quaternion [w, x, y, z]
+            Eigen::Quaterniond quat(d->qpos[joint_info.qpos_adr + 3],
+                                    d->qpos[joint_info.qpos_adr + 4],
+                                    d->qpos[joint_info.qpos_adr + 5],
+                                    d->qpos[joint_info.qpos_adr + 6]);
+            ret_quat = quat;            
+            return 0;
+            
+        }
+        else
+        {
+            std::cerr << "Error: Body '" << body_name << "' is not a free joint or has invalid qpos address." << std::endl;
+            return -1;
+        }
+    }
+
     // --- General Utilities ---
 
     inline void exportToCSV(const std::string &filename, const Eigen::VectorXd &x, const Eigen::MatrixXd &y)
