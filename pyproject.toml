@@ -1,22 +1,18 @@
 [build-system]
-requires = ["scikit-build-core", "pybind11"]
+requires = ["scikit-build-core>=0.8,<0.10", "pybind11", "packaging>=21.0,<24.0"]
 build-backend = "scikit_build_core.build"
 
-
 [project]
-name = "sspp"  # The name of your package
-version = "0.2"
+name = "sspp"
+version = "0.2.0"  # Must be full semantic version
 description = "SSPP - Sampled Spline Path Planner Bindings for Python"
 authors = [{name = "Gerald Ebmer", email = "gerald.ebmer@tuwien.ac.at"}]
 
+# Remove the setuptools section - not needed for scikit-build-core
+# [tool.setuptools.packages.find]
+# where = ["sspp"]
 
-[tool.setuptools.packages.find]
-where = ["sspp"]  # Automatically include Python files in this folder
-
-
-# This is useful if you want to add additional CMake, configuration files, or data files.
-# [tool.scikit-build]
-# include = [
-#     "src/sspp/my_python_module.py", 
-#     "src/sspp/__init__.py"
-# ]
+# Use scikit-build configuration instead
+[tool.scikit-build]
+cmake.source-dir = "."
+wheel.packages = ["sspp"]
