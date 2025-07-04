@@ -102,9 +102,12 @@ import pinocchio as pin
 def main():
     mj_model, mj_data, xml_path, pin_model, pin_data, env, tool_frame_id = load()
 
-    site_names = ["wall/site_left_wall", "wall/site_right_wall"]
-    site1_xpos = mj_data.site(site_names[0]).xpos + np.array([0,0,0.0])
-    site2_xpos = mj_data.site(site_names[1]).xpos + np.array([0,0,0.0])
+    # site_names = ["wall/site_left_wall", "wall/site_right_wall"]
+    # site1_xpos = mj_data.site(site_names[0]).xpos + np.array([0,0,0.0])
+    # site2_xpos = mj_data.site(site_names[1]).xpos + np.array([0,0,0.0])
+
+    site1_xpos = np.array([0.5, 0.2, 0.3]) # left wall
+    site2_xpos = np.array([0.5, -0.2, 0.3]) # left wall
 
     via_xpos = (site1_xpos + site2_xpos)/2+ np.array([0,0,0.3])
 
@@ -113,8 +116,8 @@ def main():
     iksolver = ss.SteadyState(pin_model, pin_data, tool_frame_id)
 
     joint_id = 7
-    print("site1_xpos: ", np.array(site1_xpos))
-    print("site2_xpos: ", np.array(site2_xpos))
+    # print("site1_xpos: ", np.array(site1_xpos))
+    # print("site2_xpos: ", np.array(site2_xpos))
     
     # path start
     oMdes1 = pu.create_se3_from_rpy_and_trans(np.array(site1_xpos), np.array([0,0,np.pi]))
