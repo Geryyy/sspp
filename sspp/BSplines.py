@@ -136,34 +136,76 @@ def evalRotationInterpolationDiffFull(R, phi, S, theta, theta_vec):
 ################################################################################################
 
 def casadiBspline(theta, t, c, k):
+    n = t.shape[0] - k - 1
+    
+    # Clamp theta to [0, 1] for evaluation
+    theta_clamped = ca.fmax(0, ca.fmin(1, theta))
+    
+    result = 0
+    for i in range(n):
+        result += c[i] * casadiB(theta_clamped, k, i, t)
+    
+    return result
+
+def casadiBspline_derivative(theta, t, c, k):
   n = t.shape[0] - k - 1
-  #assert (n >= k+1) and (len(c) >= n)
-  
+
+  # Clamp theta to [0, 1] for evaluation
+  theta_clamped = ca.fmax(0, ca.fmin(1, theta))
+
   result = 0
   for i in range(n):
-    result += c[i] * casadiB(theta, k, i, t)
-  
+    result += c[i] * casadi_dB(theta_clamped, k, i, t)
+
   return result
 
-def casadiBsplineVec(theta, t, c, k):
-  n = t.shape[0] - k - 1
-  #assert (n >= k+1) and (len(c) >= n)
-  
-  result = 0
-  for i in range(n):
-    result += c[i, :] * casadiB(theta, k, i, t)
 
-  return ca.if_else(theta < 0, c[0, :] * casadiB(0, k, 0, t), ca.if_else(theta >= 1, c[n - 1, :], result))
+def casadiBsplineVec(theta, t, c, k):
+    n = t.shape[0] - k - 1
+    
+    # Clamp theta to [0, 1] for evaluation
+    theta_clamped = ca.fmax(0, ca.fmin(1, theta))
+    
+    result = 0
+    for i in range(n):
+        result += c[i, :] * casadiB(theta_clamped, k, i, t)
+    
+    return result
+
+def casadiBsplineVec_derivative(theta, t, c, k):
+    n = t.shape[0] - k - 1
+    
+    # Clamp theta to [0, 1] for evaluation
+    theta_clamped = ca.fmax(0, ca.fmin(1, theta))
+    
+    result = 0
+    for i in range(n):
+        result += c[i, :] * casadi_dB(theta_clamped, k, i, t)
+    
+    return result
+
 
 def casadiB(theta, k, i, t):
-  if k == 0: ## case doesn't exist
-    return ca.if_else(ca.logic_or(ca.logic_and(t[i] <= theta, theta < t[i+1]), theta == t[i + 1]), 1.0, 0.0) ## TODO theta <= t[i + 1]
-  
-  c1 = ca.if_else(t[i+k] == t[i], 0.0, (theta - t[i]) / (t[i+k] - t[i]) * casadiB(theta, k-1, i, t))
-  c2 = ca.if_else(t[i+k+1] == t[i+1], 0.0, (t[i+k+1] - theta) / (t[i+k+1] - t[i+1]) * casadiB(theta, k-1, i+1, t))
-  
-  return c1 + c2
+    if k == 0:
+        return ca.if_else(ca.logic_or(ca.logic_and(t[i] <= theta, theta < t[i+1]), theta == t[i + 1]), 1.0, 0.0)
+    
+    c1 = ca.if_else(t[i+k] == t[i], 0.0, (theta - t[i]) / (t[i+k] - t[i]) * casadiB(theta, k-1, i, t))
+    c2 = ca.if_else(t[i+k+1] == t[i+1], 0.0, (t[i+k+1] - theta) / (t[i+k+1] - t[i+1]) * casadiB(theta, k-1, i+1, t))
+    return c1 + c2
 
+
+def casadi_dB(theta, k, i, t):
+  if k == 0:
+    return 0.0
+  if t[i+k] == t[i]:
+    c1 = 0.0
+  else:
+    c1 = k / (t[i+k] - t[i]) * casadiB(theta, k-1, i, t)
+  if t[i+k+1] == t[i+1]:
+    c2 = 0.0
+  else:
+    c2 = -k / (t[i+k+1] - t[i+1]) * casadiB(theta, k-1, i+1, t)
+  return c1 + c2
 
 
 
@@ -194,6 +236,54 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def test_bspline_simple():
+    """Simple test for B-spline continuity and derivatives"""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from sspp import BSplines as bs
+    
+    # Setup
+    c = np.array([0, 1, 2, 1, 0])  # 5 control points
+    k = 3
+    t = bs.knot_vector(len(c), k)
+    
+    # Test range including outside [0,1]
+    theta = np.linspace(-0.2, 1.2, 100)
+    
+    # Evaluate spline and derivative
+    y = [float(casadiBspline(x, t, c, k)) for x in theta]
+    dy = [float(casadiBspline_derivative(x, t, c, k)) for x in theta]
+    
+    # Check continuity at boundaries
+    eps = 1e-8
+    print(f"Continuity at θ=0: {abs(float(casadiBspline(-eps, t, c, k)) - float(casadiBspline(0, t, c, k))):.2e}")
+    print(f"Continuity at θ=1: {abs(float(casadiBspline(1+eps, t, c, k)) - float(casadiBspline(1, t, c, k))):.2e}")
+    
+    # Check derivative accuracy at θ=0.5
+    theta_test = 0.5
+    dy_analytical = float(casadiBspline_derivative(theta_test, t, c, k))
+    dy_numerical = (float(casadiBspline(theta_test + eps, t, c, k)) - 
+                   float(casadiBspline(theta_test - eps, t, c, k))) / (2*eps)
+    print(f"Derivative error at θ=0.5: {abs(dy_analytical - dy_numerical):.2e}")
+    
+    # Plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    
+    ax1.plot(theta, y, 'b-', linewidth=2)
+    ax1.axvline(0, color='r', linestyle='--', alpha=0.5)
+    ax1.axvline(1, color='r', linestyle='--', alpha=0.5)
+    ax1.grid(True)
+    ax1.set_title('B-spline')
+    
+    ax2.plot(theta, dy, 'g-', linewidth=2)
+    ax2.axvline(0, color='r', linestyle='--', alpha=0.5)
+    ax2.axvline(1, color='r', linestyle='--', alpha=0.5)
+    ax2.grid(True)
+    ax2.set_title('Derivative')
+    
+    plt.tight_layout()
+    plt.show()
+
 def test_casadi_bspline():
     # Step 1: Initialize control points
     q0 = np.array([0, 5, 10, 15])
@@ -206,7 +296,7 @@ def test_casadi_bspline():
     t = knot_vector(n_control_points, k)
 
     # Step 3: Evaluate the B-spline using CasADi
-    theta = np.linspace(0, 1, 10)  # Evaluation points
+    theta = np.linspace(-0.2, 1.2, 100)  # Evaluation points
     y = np.array([casadiBspline(x, t, c, k) for x in theta])
 
     print("t: ", t)
@@ -249,7 +339,7 @@ def test_scipy_bspline():
     import matplotlib.pyplot as plt
 
     n_ctrl_pts = 3
-    k = 2
+    k = 3
     q_start = np.ones((9,))*0.5
     q_end = np.ones((9,))*0.4
     via_pts = (np.linspace(q_start, q_end, n_ctrl_pts))
@@ -282,7 +372,8 @@ def test_scipy_bspline():
 
 if __name__ == '__main__':
     # test_bspline()
-    test_casadi_bspline()
+    # test_casadi_bspline()
+    test_bspline_simple()
 
     # test_numpy_bspline()
 
