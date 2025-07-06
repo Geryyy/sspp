@@ -393,7 +393,8 @@ namespace tsp {
                                              int sample_count,
                                              int check_points,
                                              int gd_iterations,
-                                             int init_points) {
+                                             int init_points,
+                                             double z_min = 0.0) {
 #if PROFILE_TIME
             auto start_time = std::chrono::high_resolution_clock::now();
 #endif
@@ -421,6 +422,8 @@ namespace tsp {
             }
             path_spline_ = init_spline;
             Point init_via_pt = via_points[1];
+
+            init_via_pt[2] = std::max(init_via_pt[2], z_min); // ensure via point is above ground
 
             // check if start or end are in collission
             std::vector<PathCandidate> no_candidates;
@@ -493,11 +496,12 @@ namespace tsp {
                                                             const int sample_count = 50,
                                                             const int check_points = 50,
                                                             const int gd_iterations = 10,
-                                                            const int init_points = 3) {
+                                                            const int init_points = 3,
+                                                            double z_min = 0.0) {
             flag_endderivatives = true;
             std::vector<Point> via_pts = {start, end};
             return core_plan(via_pts, end_derivative, sigma, limits, sample_count, check_points, gd_iterations,
-                             init_points);
+                             init_points, z_min);
         }
 
         std::vector<PathCandidate> plan_with_via_pts(const std::vector<Point> via_pts,
@@ -505,10 +509,11 @@ namespace tsp {
                                         const int sample_count = 50,
                                         const int check_points = 50,
                                         const int gd_iterations = 10,
-                                        const int init_points = 3) {
+                                        const int init_points = 3,
+                                        double z_min = 0.0) {
             flag_endderivatives = false;
             return core_plan(via_pts, std::nullopt, sigma, limits, sample_count, check_points, gd_iterations,
-                             init_points);
+                             init_points, z_min);
         }
 
         std::vector<PathCandidate> plan(const Point &start,
@@ -516,11 +521,12 @@ namespace tsp {
                                         const int sample_count = 50,
                                         const int check_points = 50,
                                         const int gd_iterations = 10,
-                                        const int init_points = 3) {
+                                        const int init_points = 3,
+                                        double z_min = 0.0) {
             flag_endderivatives = false;
             std::vector<Point> via_pts = {start, end};
             return core_plan(via_pts, std::nullopt, sigma, limits, sample_count, check_points, gd_iterations,
-                             init_points);
+                             init_points, z_min);
         }
 
         std::vector<PathCandidate> get_succesful_path_candidates() {

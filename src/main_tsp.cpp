@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
     Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
     end_pt[2] += 0.01;
     Point start_pos;
-    start_pos << 0.5, 0.5, 0.5, 1.5708;
+    start_pos << -0.5, 0.1, 0.1, 1.5708;
 
     // First Planning Attempt
     for (int i = 0; i < N; ++i) {

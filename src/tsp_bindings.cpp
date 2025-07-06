@@ -39,13 +39,13 @@ PYBIND11_MODULE(_tsp, m) {
         .def("plan", &TaskSpacePlanner::plan,
           py::arg("start"), py::arg("end"), py::arg("sigma"),
           py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
-          py::arg("gd_iterations") = 10, py::arg("init_points") = 3)
+          py::arg("gd_iterations") = 10, py::arg("init_points") = 3, py::arg("z_min") = 0.0)
         .def("plan_with_end_derivatives", &TaskSpacePlanner::plan_with_end_derivatives,
              py::arg("start"), py::arg("end"), py::arg("end_derivative"), py::arg("sigma"),
              py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
-             py::arg("gd_iterations") = 10, py::arg("init_points") = 3)
+             py::arg("gd_iterations") = 10, py::arg("init_points") = 3, py::arg("z_min") = 0.0)
         .def("plan_with_via_pts", &TaskSpacePlanner::plan_with_via_pts,
              py::arg("via_pts"), py::arg("sigma"),
              py::arg("limits"), py::arg("sample_count") = 50, py::arg("check_points") = 50,
-             py::arg("gd_iterations") = 10, py::arg("init_points") = 3);
+             py::arg("gd_iterations") = 10, py::arg("init_points") = 3, py::arg("z_min") = 0.0);
 }
