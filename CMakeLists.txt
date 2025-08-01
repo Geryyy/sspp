@@ -83,10 +83,10 @@ target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_
 install(TARGETS _sspp DESTINATION sspp)
 
 # TaskSpacePlanner bindings
-pybind11_add_module(_tsp src/tsp_bindings.cpp)
-target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
+#pybind11_add_module(_tsp src/tsp_bindings.cpp)
+#target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
-install(TARGETS _tsp DESTINATION sspp)
+#install(TARGETS _tsp DESTINATION sspp)
 
 
 # build library

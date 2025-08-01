@@ -39,6 +39,9 @@ std::vector<tsp::PathCandidate> path_candidates;
 std::vector<tsp::PathCandidate> failed_candidates;
 std::vector<tsp::Point> via_pts, sampled_via_pts;
 
+// Planning state tracking
+bool first_plan_call = true;
+
 // Function to print planning statistics
 void report_planning_statistics(const std::vector<double>& duration_vec,
                                 const std::vector<tsp::PathCandidate>& successful_candidates,
@@ -63,9 +66,12 @@ void report_planning_statistics(const std::vector<double>& duration_vec,
     }
     std::cout << "Number of successful path candidates: " << successful_candidates.size() << std::endl;
     std::cout << "Number of failed path candidates: " << failed_candidates.size() << std::endl;
-//    std::cout << "Control Points of Spline: " << path_planner.get_ctrl_pts() << std::endl;
-//    std::cout << "Shape of Control Points: " << path_planner.get_ctrl_pts().cols() << std::endl;
-//    std::cout << "Knot Vector of Spline: " << path_planner.get_knot_vector() << std::endl;
+
+    // Print current distribution state
+    Point current_mean = path_planner.get_current_mean();
+    Point current_stddev = path_planner.get_current_stddev();
+    std::cout << "Current mean: [" << current_mean.transpose() << "]" << std::endl;
+    std::cout << "Current stddev: [" << current_stddev.transpose() << "]" << std::endl;
 }
 
 // Function to run a planning attempt
@@ -81,26 +87,24 @@ std::vector<tsp::PathCandidate> run_planning(tsp::TaskSpacePlanner& path_planner
     return candidates;
 }
 
-
-
 void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
                             const Point& start_pt,
                             const Point& end_pt,
-                            double sigma,
-                            const Point& limits,
-                            int sample_cnt,
-                            int check_cnt,
-                            int gd_iterations,
-                            int ctrl_cnt,
                             const Utility::BodyJointInfo& coll_body_info,
                             Timer& exec_timer,
                             std::vector<double>& duration_vec,
                             const std::string& report_name = "Planning attempt") {
 
+    // Use iterative flag for subsequent calls
+    bool iterate_flag = !first_plan_call;
+
     path_candidates = run_planning(path_planner, [&]() {
-        return path_planner.plan(start_pt, end_pt,
-                                 sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+        return path_planner.plan(start_pt, end_pt, iterate_flag);
     }, exec_timer, duration_vec);
+
+    if (first_plan_call) {
+        first_plan_call = false;
+    }
 
     failed_candidates = path_planner.get_failed_path_candidates();
     report_planning_statistics(duration_vec, path_candidates, failed_candidates, path_planner, report_name);
@@ -111,8 +115,6 @@ void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
     // TEST purpose: Set end point in MuJoCo
     Utility::mj_set_point(end_pt, coll_body_info, d);
 }
-
-
 
 int main(int argc, char** argv) {
     if (argc < 3) {
@@ -139,8 +141,7 @@ int main(int argc, char** argv) {
     }
     d = mj_makeData(m);
 
-   Utility::print_body_info(m);
-//    return 0;
+    Utility::print_body_info(m);
 
     std::cout << "Taskspace Planner" << std::endl;
     std::cout << "DoFs: " << m->nq << std::endl;
@@ -150,32 +151,39 @@ int main(int argc, char** argv) {
     mj_forward(m, d);
     mj_collision(m, d);
 
-    // Setup Task Space Planner
+    // Setup Task Space Planner with configuration parameters
     std::string coll_body_name = collisionBodyNameArg;
     auto coll_body_info = get_free_body_joint_info(coll_body_name, m);
-    tsp::TaskSpacePlanner path_planner(m, coll_body_name);
 
-    Point limits;
-    limits << 1, 1, 1, 1.5708;
-    double sigma = 0.1;
-    int sample_cnt = 20;
-    int check_cnt = 20;
-    int gd_iterations = 10;
-    int ctrl_cnt = 3;
+    // Configure planner parameters
+    double stddev_initial = 0.3;    // Initial sampling spread
+    double stddev_min = 0.01;       // Minimum stddev (convergence limit)
+    double stddev_max = 2.0;        // Maximum stddev (exploration limit)
+    double stddev_increase_factor = 1.5;  // Increase factor when no success
+    double stddev_decay_factor = 0.95;    // Decay factor when successful
+    double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
+    int sample_count = 20;          // Number of via point candidates per iteration
+    int check_points = 50;          // Points checked along spline for collision
+    int gd_iterations = 10;         // Gradient descent iterations
+    int init_points = 3;            // Number of initial via points
+    double collision_weight = 1.0;  // Weight for collision cost in path evaluation
+    double z_min = 0.0;             // Minimum z-coordinate (ground level)
+
+    tsp::TaskSpacePlanner path_planner(m, coll_body_name,
+                                       stddev_initial, stddev_min, stddev_max,
+                                       stddev_increase_factor, stddev_decay_factor,
+                                       elite_fraction, sample_count, check_points,
+                                       gd_iterations, init_points, collision_weight, z_min);
 
     Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
     end_pt[2] += 0.01;
     Point start_pt;
     start_pt << -0.5, 0.1, 0.1, 1.5708;
 
-
-    // Second Planning Attempt with Via Points Initialization
-    path_planner.reset();
-
-    execute_planning_cycle(path_planner, start_pt, end_pt, sigma, limits,
-                           sample_cnt, check_cnt, gd_iterations, ctrl_cnt,
+    // Initial Planning Attempt
+    execute_planning_cycle(path_planner, start_pt, end_pt,
                            coll_body_info, exec_timer, duration_vec_second,
-                           "run planning");
+                           "Initial planning (new path)");
 
     // Initialize GLFW
     if (!glfwInit()) {
@@ -244,12 +252,11 @@ int main(int argc, char** argv) {
         }
 
         if (flag_plan_path){
-            std::cout << "debug out: plan new path" << std::endl;
+            std::cout << "debug out: iterative planning refinement" << std::endl;
 
-            execute_planning_cycle(path_planner, start_pt, end_pt, sigma, limits,
-                                   sample_cnt, check_cnt, gd_iterations, ctrl_cnt,
+            execute_planning_cycle(path_planner, start_pt, end_pt,
                                    coll_body_info, exec_timer, duration_vec_second,
-                                   "run planning");
+                                   "Iterative refinement");
 
             flag_plan_path = false;
         }
