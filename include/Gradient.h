@@ -53,7 +53,8 @@ namespace tsp {
         Converged = 0,             // Gradient vanishes
         MaxIterationsExceeded = 1, // Maximum iterations reached
         BelowFloor = 2,             // Via point below floor
-        Invalid = 3                   // default case
+        Invalid = 3,
+        Failed
     };
 
     inline std::string SolverStatustoString(SolverStatus status) {

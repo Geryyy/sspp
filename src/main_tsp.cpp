@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
     int sample_count = 20;          // Number of via point candidates per iteration
     int check_points = 50;          // Points checked along spline for collision
-    int gd_iterations = 10;         // Gradient descent iterations
+    int gd_iterations = 5;         // Gradient descent iterations
     int init_points = 3;            // Number of initial via points
     double collision_weight = 1.0;  // Weight for collision cost in path evaluation
     double z_min = 0.0;             // Minimum z-coordinate (ground level)

@@ -49,6 +49,12 @@ find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP REQUIRED)
 
+option(DEBUG_SINGLE_THREAD "Disable OpenMP for debugging" OFF)
+
+
+
+#find_package(OpenMP REQUIRED)
+
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Add executable
@@ -60,12 +66,24 @@ add_executable(tsp_standalone src/main_tsp.cpp include/Timer.h include/tsp.h inc
         src/ui.cpp include/Collision.h)
 
 # Link libraries
-target_link_libraries(tsp_standalone
-        PUBLIC mujoco::mujoco
-        PUBLIC Threads::Threads
-        PUBLIC Eigen3::Eigen
-        PUBLIC glfw
-        PUBLIC OpenMP::OpenMP_CXX)
+
+
+if(DEBUG_SINGLE_THREAD)
+    # Remove OpenMP flags
+    target_link_libraries(tsp_standalone
+            PUBLIC mujoco::mujoco
+            PUBLIC Threads::Threads
+            PUBLIC Eigen3::Eigen
+            PUBLIC glfw)
+else()
+
+    target_link_libraries(tsp_standalone
+            PUBLIC mujoco::mujoco
+            PUBLIC Threads::Threads
+            PUBLIC Eigen3::Eigen
+            PUBLIC glfw
+            PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
 # Link gperftools (for memory and CPU profiling)
 if(GPERFTOOLS_LIBRARY)
@@ -83,10 +101,10 @@ target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_
 install(TARGETS _sspp DESTINATION sspp)
 
 # TaskSpacePlanner bindings
-#pybind11_add_module(_tsp src/tsp_bindings.cpp)
-#target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
+pybind11_add_module(_tsp src/tsp_bindings.cpp)
+target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
 
-#install(TARGETS _tsp DESTINATION sspp)
+install(TARGETS _tsp DESTINATION sspp)
 
 
 # build library

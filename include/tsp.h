@@ -65,6 +65,8 @@ namespace tsp {
         int sample_count_, check_points_, gd_iterations_, init_points_;
         double collision_weight_;
         double z_min_;
+        Point limits_;  // Sampling bounds for each dimension
+        bool enable_gradient_descent_;
 
         // Algorithm state (updated each plan call)
         Point mean_, stddev_;
@@ -85,13 +87,16 @@ namespace tsp {
                                   int gd_iterations = 10,
                                   int init_points = 3,
                                   double collision_weight = 1.0,
-                                  double z_min = 0.0)
+                                  double z_min = 0.0,
+                                  Point limits = Point::Ones() * 2.0,
+                                  bool enable_gradient_descent = true)
                 : model_(model),
                   stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                   stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                   elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                   gd_iterations_(gd_iterations), init_points_(init_points),
-                  collision_weight_(collision_weight), z_min_(z_min) {
+                  collision_weight_(collision_weight), z_min_(z_min), limits_(limits),
+                  enable_gradient_descent_(enable_gradient_descent) {
             init_collision_env(std::move(body_name));
         }
 
@@ -107,12 +112,15 @@ namespace tsp {
                                   int gd_iterations = 10,
                                   int init_points = 3,
                                   double collision_weight = 1.0,
-                                  double z_min = 0.0)
+                                  double z_min = 0.0,
+                                  Point limits = Point::Ones() * 2.0,
+                                  bool enable_gradient_descent = true)
                 : stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                   stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                   elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                   gd_iterations_(gd_iterations), init_points_(init_points),
-                  collision_weight_(collision_weight), z_min_(z_min) {
+                  collision_weight_(collision_weight), z_min_(z_min), limits_(limits),
+                  enable_gradient_descent_(enable_gradient_descent) {
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
             if (!model_) throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
             init_collision_env(std::move(body_name));
@@ -142,6 +150,12 @@ namespace tsp {
             if (!iterate_flag) {
                 mean_ = 0.5 * (start + end);  // midpoint for new paths
                 mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
+
+                // Ensure initial mean is within limits
+                for (int i = 0; i < 3; ++i) {
+                    mean_[i] = std::clamp(mean_[i], -limits_[i], limits_[i]);
+                }
+
                 stddev_ = Point::Ones() * stddev_initial_;
             }
 
@@ -159,7 +173,7 @@ namespace tsp {
             via_point_candidates.reserve(sample_count_);
 
             for (int i = 0; i < sample_count_; i++) {
-                Point candidate = get_random_point(mean_, stddev_);
+                Point candidate = get_random_point(mean_, stddev_, limits_);
                 candidate[2] = std::max(candidate[2], z_min_);  // ensure above ground
                 via_point_candidates.push_back(candidate);
             }
@@ -192,6 +206,7 @@ namespace tsp {
         std::vector<Point> get_sampled_via_pts() { return sampled_via_pts_; }
         Point get_current_mean() const { return mean_; }
         Point get_current_stddev() const { return stddev_; }
+        Point get_limits() const { return limits_; }
 
         static Point evaluate(double u, const Spline &spline) { return spline(u); }
         [[nodiscard]] Point evaluate(double u) const { return path_spline_(u); }
@@ -217,7 +232,6 @@ namespace tsp {
             return pts;
         }
 
-
         Spline initializePath(const Point &start, const Point &end, int num_points = 3) {
             setupLinearPath(start, end, num_points);
             auto [via_mat, u_knots] = createSplineData();
@@ -229,6 +243,7 @@ namespace tsp {
             via_mat.block<kDOF, 1>(0, 1) = via_pt;
             return SplineFitter::Interpolate(via_mat, kSplineDegree, u_knots);
         }
+
     private:
         void setupLinearPath(const Point &start, const Point &end, int num_points) {
             param_vec.clear();
@@ -251,14 +266,35 @@ namespace tsp {
             return {via_mat, Eigen::Map<Eigen::VectorXd>(param_vec.data(), param_vec.size())};
         }
 
-        static Point get_random_point(const Point &mean, const Point &stddev) {
+        static Point get_random_point(const Point &mean, const Point &stddev, const Point &limits) {
             static thread_local std::mt19937 gen(std::random_device{}());
             Point pt;
+
             for(int i = 0; i < 3; ++i) {
+                // Truncated normal distribution within bounds [-limits[i], +limits[i]]
                 std::normal_distribution<double> dist(mean[i], stddev[i]);
-                pt[i] = dist(gen);
+                double lower_bound = -limits[i];
+                double upper_bound = limits[i];
+
+                double sample;
+                int attempts = 0;
+                const int max_attempts = 100;  // Prevent infinite loop
+
+                do {
+                    sample = dist(gen);
+                    attempts++;
+
+                    // If too many attempts, fall back to uniform sampling within bounds
+                    if (attempts >= max_attempts) {
+                        std::uniform_real_distribution<double> uniform_dist(lower_bound, upper_bound);
+                        sample = uniform_dist(gen);
+                        break;
+                    }
+                } while (sample < lower_bound || sample > upper_bound);
+
+                pt[i] = sample;
             }
-            pt[3] = 0.0;
+            pt[3] = 0.0;  // Fourth dimension always zero
             return pt;
         }
 
@@ -300,12 +336,10 @@ namespace tsp {
             successful_candidates.clear();
             failed_candidates.clear();
 
-#pragma omp parallel default(none) shared(via_point_candidates, check_points, gd_iterations, successful_candidates, failed_candidates, sample_count)
-            {
-                std::vector<PathCandidate> successful_thread, failed_thread;
-
-#pragma omp for schedule(dynamic, 1) nowait
-                for (int i = 0; i < sample_count; ++i) {
+#ifdef DEBUG_SINGLE_THREAD
+            // Single-threaded debug version
+            for (int i = 0; i < sample_count; ++i) {
+                if (enable_gradient_descent_ && gd_iterations > 0) {
                     auto collision_cost_lambda = [&](const Point &via_pt) {
                         return collision_cost(via_pt, check_points);
                     };
@@ -314,7 +348,49 @@ namespace tsp {
                     auto solver_status = graddesc.optimize(via_point_candidates[i]);
 
                     PathCandidate candidate(graddesc.get_result(), graddesc.get_gradient_descent_steps(), solver_status);
-                    (solver_status == SolverStatus::Converged ? successful_thread : failed_thread).push_back(candidate);
+                    (solver_status == SolverStatus::Converged ? successful_candidates : failed_candidates).push_back(candidate);
+                } else {
+                    Point candidate_via_pt = via_point_candidates[i];
+                    bool is_collision_free = (collision_cost(candidate_via_pt, check_points) == 0.0);
+
+                    PathCandidate candidate(candidate_via_pt, {},
+                                          is_collision_free ? SolverStatus::Converged : SolverStatus::Failed);
+
+                    (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
+                }
+            }
+#else
+            // Original OpenMP version
+#pragma omp parallel default(none) shared(via_point_candidates, check_points, gd_iterations, successful_candidates, failed_candidates, sample_count)
+            {
+                std::vector<PathCandidate> successful_thread, failed_thread;
+
+#pragma omp for schedule(dynamic, 1) nowait
+                for (int i = 0; i < sample_count; ++i) {
+                    if (enable_gradient_descent_ && gd_iterations > 0) {
+                        // With gradient descent refinement
+                        auto collision_cost_lambda = [&](const Point &via_pt) {
+                            return collision_cost(via_pt, check_points);
+                        };
+
+                        GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
+                        auto solver_status = graddesc.optimize(via_point_candidates[i]);
+
+                        PathCandidate candidate(graddesc.get_result(), graddesc.get_gradient_descent_steps(), solver_status);
+                        (solver_status == SolverStatus::Converged ? successful_thread : failed_thread).push_back(candidate);
+                    } else {
+                        // Pure sampling - no gradient descent refinement
+                        Point candidate_via_pt = via_point_candidates[i];
+
+                        // Check if via point leads to collision-free path
+                        bool is_collision_free = (collision_cost(candidate_via_pt, check_points) == 0.0);
+
+                        // Create candidate with original via point and empty gradient steps
+                        PathCandidate candidate(candidate_via_pt, {},
+                                                is_collision_free ? SolverStatus::Converged : SolverStatus::Failed);
+
+                        (is_collision_free ? successful_thread : failed_thread).push_back(candidate);
+                    }
                 }
 
 #pragma omp critical
@@ -323,6 +399,7 @@ namespace tsp {
                     failed_candidates.insert(failed_candidates.end(), failed_thread.begin(), failed_thread.end());
                 }
             }
+#endif
         }
 
         void updateDistributionFromElites() {
@@ -355,6 +432,11 @@ namespace tsp {
             }
             mean_ = new_mean;
             mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
+
+            // Ensure mean stays within limits
+            for (int i = 0; i < 3; ++i) {
+                mean_[i] = std::clamp(mean_[i], -limits_[i], limits_[i]);
+            }
 
             // Update stddev (weighted standard deviation)
             Point variance = Point::Zero();
