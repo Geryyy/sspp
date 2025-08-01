@@ -37,6 +37,7 @@ mjrContext con;
 
 std::vector<tsp::PathCandidate> path_candidates;
 std::vector<tsp::PathCandidate> failed_candidates;
+std::vector<tsp::Point> via_pts, sampled_via_pts;
 
 // Function to print planning statistics
 void report_planning_statistics(const std::vector<double>& duration_vec,
@@ -80,6 +81,39 @@ std::vector<tsp::PathCandidate> run_planning(tsp::TaskSpacePlanner& path_planner
     return candidates;
 }
 
+
+
+void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
+                            const Point& start_pt,
+                            const Point& end_pt,
+                            double sigma,
+                            const Point& limits,
+                            int sample_cnt,
+                            int check_cnt,
+                            int gd_iterations,
+                            int ctrl_cnt,
+                            const Utility::BodyJointInfo& coll_body_info,
+                            Timer& exec_timer,
+                            std::vector<double>& duration_vec,
+                            const std::string& report_name = "Planning attempt") {
+
+    path_candidates = run_planning(path_planner, [&]() {
+        return path_planner.plan(start_pt, end_pt,
+                                 sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
+    }, exec_timer, duration_vec);
+
+    failed_candidates = path_planner.get_failed_path_candidates();
+    report_planning_statistics(duration_vec, path_candidates, failed_candidates, path_planner, report_name);
+
+    sampled_via_pts = path_planner.get_sampled_via_pts();
+    via_pts = path_planner.get_via_pts();
+
+    // TEST purpose: Set end point in MuJoCo
+    Utility::mj_set_point(end_pt, coll_body_info, d);
+}
+
+
+
 int main(int argc, char** argv) {
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <model_file> <collision_body_name>" << std::endl;
@@ -91,7 +125,6 @@ int main(int argc, char** argv) {
     Timer exec_timer;
     std::vector<double> duration_vec_first;
     std::vector<double> duration_vec_second;
-    constexpr int N = 1;
 
     // Initialize MuJoCo
     std::cout << "MuJoCo version: " << mj_version() << std::endl;
@@ -122,8 +155,6 @@ int main(int argc, char** argv) {
     auto coll_body_info = get_free_body_joint_info(coll_body_name, m);
     tsp::TaskSpacePlanner path_planner(m, coll_body_name);
 
-    Point end_derivative;
-    end_derivative << 0, 0, -1, 0;
     Point limits;
     limits << 1, 1, 1, 1.5708;
     double sigma = 0.1;
@@ -134,35 +165,17 @@ int main(int argc, char** argv) {
 
     Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
     end_pt[2] += 0.01;
-    Point start_pos;
-    start_pos << -0.5, 0.1, 0.1, 1.5708;
+    Point start_pt;
+    start_pt << -0.5, 0.1, 0.1, 1.5708;
 
-    // First Planning Attempt
-    for (int i = 0; i < N; ++i) {
-        path_candidates = run_planning(path_planner, [&]() {
-            return path_planner.plan_with_end_derivatives(start_pos, end_pt, end_derivative,
-                                                          sigma, limits, sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
-        }, exec_timer, duration_vec_first);
-    }
-    failed_candidates = path_planner.get_failed_path_candidates();
-    auto sampled_via_pts = path_planner.get_sampled_via_pts();
-    report_planning_statistics(duration_vec_first, path_candidates, failed_candidates, path_planner, "First planning attempt with start, end and endderivatives");
 
     // Second Planning Attempt with Via Points Initialization
     path_planner.reset();
-    auto via_pts_init = path_planner.get_via_pts();
-    for (int i = 0; i < N; ++i) {
-        path_candidates = run_planning(path_planner, [&]() {
-            return path_planner.plan_with_via_pts(via_pts_init, sigma, limits,
-                                                  sample_cnt, check_cnt, gd_iterations, ctrl_cnt);
-        }, exec_timer, duration_vec_second);
-    }
-    failed_candidates = path_planner.get_failed_path_candidates();
-    report_planning_statistics(duration_vec_second, path_candidates, failed_candidates, path_planner, "Second planning attempt with via_pts initialization");
 
-    // TEST purpose: Set end point in MuJoCo
-    Utility::mj_set_point(end_pt, coll_body_info, d);
-    auto via_pts = path_planner.get_via_pts();
+    execute_planning_cycle(path_planner, start_pt, end_pt, sigma, limits,
+                           sample_cnt, check_cnt, gd_iterations, ctrl_cnt,
+                           coll_body_info, exec_timer, duration_vec_second,
+                           "run planning");
 
     // Initialize GLFW
     if (!glfwInit()) {
@@ -228,6 +241,17 @@ int main(int argc, char** argv) {
             double u = std::fmod(d->time / 10.0, 1.0);
             Point pt = path_planner.evaluate(u);
             Utility::mj_set_point(pt, coll_body_info, d);
+        }
+
+        if (flag_plan_path){
+            std::cout << "debug out: plan new path" << std::endl;
+
+            execute_planning_cycle(path_planner, start_pt, end_pt, sigma, limits,
+                                   sample_cnt, check_cnt, gd_iterations, ctrl_cnt,
+                                   coll_body_info, exec_timer, duration_vec_second,
+                                   "run planning");
+
+            flag_plan_path = false;
         }
 
         mjr_render(viewport, &scn, &con);

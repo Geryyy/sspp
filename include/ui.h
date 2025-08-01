@@ -23,6 +23,7 @@ extern bool vis_failed_candidates;
 extern bool vis_grad_descent;
 extern bool vis_animate_block;
 extern bool vis_sampled_via_pts;
+extern bool flag_plan_path;
 
 
 void print_candidates_statistics(const std::vector<tsp::PathCandidate>& candidates, const std::string& label);
@@ -35,7 +36,7 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods,
     mjModel* m, mjData* d, 
     bool& vis_best_path, bool& vis_succ_candidates,
     bool& vis_failed_candidates, bool& vis_grad_descent, bool& vis_animate_block,
-    bool& vis_sampled_via_pts,
+    bool& vis_sampled_via_pts, bool& flag_plan_path,
     std::vector<tsp::PathCandidate>& path_candidates,
     std::vector<tsp::PathCandidate>& failed_candidates);
 

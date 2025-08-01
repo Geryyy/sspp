@@ -27,6 +27,7 @@ bool vis_failed_candidates = false;
 bool vis_grad_descent = false;
 bool vis_animate_block = false;
 bool vis_sampled_via_pts = false;
+bool flag_plan_path = false;
 
 extern std::vector<tsp::PathCandidate> path_candidates;
 extern std::vector<tsp::PathCandidate> failed_candidates;
@@ -48,6 +49,7 @@ void print_menue() {
     std::cout << "R\tvis_grad_descent" << std::endl;
     std::cout << "A\tanimate block" << std::endl;
     std::cout << "T\tvis_sampled_via_points" << std::endl;
+    std::cout << "P\tflag_plan_path" << std::endl;
 }
 
 // keyboard callback
@@ -55,7 +57,7 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods,
     mjModel* m, mjData* d, 
     bool& vis_best_path, bool& vis_succ_candidates,
     bool& vis_failed_candidates, bool& vis_grad_descent, bool& vis_animate_block,
-    bool& vis_sampled_via_pts,
+    bool& vis_sampled_via_pts, bool& flag_plan_path,
     std::vector<tsp::PathCandidate>& path_candidates,
     std::vector<tsp::PathCandidate>& failed_candidates) {
     // backspace: reset simulation
@@ -101,6 +103,12 @@ void keyboard(GLFWwindow* window, int key, int scancode, int act, int mods,
     if (act==GLFW_PRESS && key==GLFW_KEY_T) {
         vis_sampled_via_pts = !vis_sampled_via_pts;
         std::cout << "vis_sampled_via_pts: " << vis_sampled_via_pts << std::endl;
+    }
+
+    // visualize sampled via points
+    if (act==GLFW_PRESS && key==GLFW_KEY_P) {
+        flag_plan_path = true;
+        std::cout << "plan new path" << std::endl;
     }
 
 }
@@ -176,7 +184,7 @@ void keyboard_cb(GLFWwindow* window, int key, int scancode, int act, int mods){
     keyboard(window, key, scancode, act, mods, m, d,
         vis_best_path, vis_succ_candidates,
         vis_failed_candidates, vis_grad_descent, vis_animate_block,
-        vis_sampled_via_pts,
+        vis_sampled_via_pts, flag_plan_path,
         path_candidates, failed_candidates);
 }
 
