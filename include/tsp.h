@@ -170,7 +170,12 @@ namespace tsp {
 
             // Generate candidate via points using current distribution
             std::vector<Point> via_point_candidates;
-            via_point_candidates.reserve(sample_count_);
+            via_point_candidates.reserve(sample_count_ + 1);
+
+            // Always include the mean as a candidate (shortest path if collision-free)
+            Point mean_candidate = mean_;
+            mean_candidate[2] = std::max(mean_candidate[2], z_min_);
+            via_point_candidates.push_back(mean_candidate);
 
             for (int i = 0; i < sample_count_; i++) {
                 Point candidate = get_random_point(mean_, stddev_, limits_);
