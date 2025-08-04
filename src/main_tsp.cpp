@@ -109,6 +109,9 @@ void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
     failed_candidates = path_planner.get_failed_path_candidates();
     report_planning_statistics(duration_vec, path_candidates, failed_candidates, path_planner, report_name);
 
+    auto ctrl_pts = path_planner.get_ctrl_pts();
+    std::cout << "Spline control points:\n" << ctrl_pts << std::endl;
+
     sampled_via_pts = path_planner.get_sampled_via_pts();
     via_pts = path_planner.get_via_pts();
 
@@ -176,9 +179,9 @@ int main(int argc, char** argv) {
                                        gd_iterations, init_points, collision_weight, z_min);
 
     Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
-    end_pt[2] += 0.01;
+    end_pt[2] += 0.8;
     Point start_pt;
-    start_pt << -0.5, 0.1, 0.1, 1.5708;
+    start_pt << -0.5, 0.7, 0.8, 1.5708;
 
     // Initial Planning Attempt
     execute_planning_cycle(path_planner, start_pt, end_pt,
