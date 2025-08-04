@@ -131,6 +131,7 @@ namespace tsp {
         ~TaskSpacePlanner() = default;
 
         void init_collision_env(std::string body_name) {
+            collision_env_vec.clear();  // Clear existing environments
             collision_env_vec.reserve(omp_get_max_threads());
             for(int i = 0; i < omp_get_max_threads(); i++) {
                 collision_env_vec.push_back(std::make_shared<Collision<Point>>(body_name, model_));
