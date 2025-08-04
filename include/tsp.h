@@ -65,7 +65,7 @@ namespace tsp {
         int sample_count_, check_points_, gd_iterations_, init_points_;
         double collision_weight_;
         double z_min_;
-        Point limits_;  // Sampling bounds for each dimension
+        Point limits_min_, limits_max_;
         bool enable_gradient_descent_;
 
         // Algorithm state (updated each plan call)
@@ -76,26 +76,27 @@ namespace tsp {
 
     public:
         explicit TaskSpacePlanner(mjModel *model, std::string body_name,
-                                  double stddev_initial = 0.3,
-                                  double stddev_min = 0.01,
-                                  double stddev_max = 2.0,
-                                  double stddev_increase_factor = 1.5,
-                                  double stddev_decay_factor = 0.95,
-                                  double elite_fraction = 0.3,
-                                  int sample_count = 50,
-                                  int check_points = 50,
-                                  int gd_iterations = 10,
-                                  int init_points = 3,
-                                  double collision_weight = 1.0,
-                                  double z_min = 0.0,
-                                  Point limits = Point::Ones() * 2.0,
-                                  bool enable_gradient_descent = true)
+                          double stddev_initial = 0.3,
+                          double stddev_min = 0.01,
+                          double stddev_max = 2.0,
+                          double stddev_increase_factor = 1.5,
+                          double stddev_decay_factor = 0.95,
+                          double elite_fraction = 0.3,
+                          int sample_count = 50,
+                          int check_points = 50,
+                          int gd_iterations = 10,
+                          int init_points = 3,
+                          double collision_weight = 1.0,
+                          double z_min = 0.0,
+                          Point limits_min = -Point::Ones() * 2.0,
+                          Point limits_max = Point::Ones() * 2.0,
+                          bool enable_gradient_descent = true)
                 : model_(model),
                   stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                   stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                   elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                   gd_iterations_(gd_iterations), init_points_(init_points),
-                  collision_weight_(collision_weight), z_min_(z_min), limits_(limits),
+                  collision_weight_(collision_weight), z_min_(z_min), limits_min_(limits_min), limits_max_(limits_max),
                   enable_gradient_descent_(enable_gradient_descent) {
             init_collision_env(std::move(body_name));
         }
@@ -152,9 +153,9 @@ namespace tsp {
                 mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
 
                 // Ensure initial mean is within limits
-                for (int i = 0; i < 3; ++i) {
-                    mean_[i] = std::clamp(mean_[i], -limits_[i], limits_[i]);
-                }
+            for (int i = 0; i < kDOF; ++i) {
+                mean_[i] = std::clamp(mean_[i], limits_min_[i], limits_max_[i]);
+            }
 
                 stddev_ = Point::Ones() * stddev_initial_;
             }
@@ -178,7 +179,7 @@ namespace tsp {
             via_point_candidates.push_back(mean_candidate);
 
             for (int i = 0; i < sample_count_; i++) {
-                Point candidate = get_random_point(mean_, stddev_, limits_);
+                Point candidate = get_random_point(mean_, stddev_, limits_min_, limits_max_);
                 candidate[2] = std::max(candidate[2], z_min_);  // ensure above ground
                 via_point_candidates.push_back(candidate);
             }
@@ -211,7 +212,8 @@ namespace tsp {
         std::vector<Point> get_sampled_via_pts() { return sampled_via_pts_; }
         Point get_current_mean() const { return mean_; }
         Point get_current_stddev() const { return stddev_; }
-        Point get_limits() const { return limits_; }
+        Point get_limits_min() const { return limits_min_; }
+        Point get_limits_max() const { return limits_max_; }
 
         static Point evaluate(double u, const Spline &spline) { return spline(u); }
         [[nodiscard]] Point evaluate(double u) const { return path_spline_(u); }
@@ -271,15 +273,15 @@ namespace tsp {
             return {via_mat, Eigen::Map<Eigen::VectorXd>(param_vec.data(), param_vec.size())};
         }
 
-        static Point get_random_point(const Point &mean, const Point &stddev, const Point &limits) {
+        static Point get_random_point(const Point &mean, const Point &stddev, const Point &limits_min, const Point &limits_max) {
             static thread_local std::mt19937 gen(std::random_device{}());
             Point pt;
 
             for(int i = 0; i < 3; ++i) {
-                // Truncated normal distribution within bounds [-limits[i], +limits[i]]
+                // Truncated normal distribution within bounds [limits_min[i], limits_max[i]]
                 std::normal_distribution<double> dist(mean[i], stddev[i]);
-                double lower_bound = -limits[i];
-                double upper_bound = limits[i];
+                double lower_bound = limits_min[i];
+                double upper_bound = limits_max[i];
 
                 double sample;
                 int attempts = 0;
@@ -299,7 +301,22 @@ namespace tsp {
 
                 pt[i] = sample;
             }
-            pt[3] = 0.0;  // Fourth dimension always zero
+            
+            // Handle yaw dimension (index 3) with proper wrapping
+            if (limits_min[3] != limits_max[3]) {  // Only if yaw limits are different
+                std::normal_distribution<double> yaw_dist(mean[3], stddev[3]);
+                double yaw_sample = yaw_dist(gen);
+                
+                // Wrap yaw to be within [limits_min[3], limits_max[3]]
+                double yaw_range = limits_max[3] - limits_min[3];
+                while (yaw_sample < limits_min[3]) yaw_sample += yaw_range;
+                while (yaw_sample > limits_max[3]) yaw_sample -= yaw_range;
+                
+                pt[3] = yaw_sample;
+            } else {
+                pt[3] = mean[3];  // Use mean if min/max are the same
+            }
+            
             return pt;
         }
 
@@ -439,8 +456,8 @@ namespace tsp {
             mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
 
             // Ensure mean stays within limits
-            for (int i = 0; i < 3; ++i) {
-                mean_[i] = std::clamp(mean_[i], -limits_[i], limits_[i]);
+            for (int i = 0; i < kDOF; ++i) {
+                mean_[i] = std::clamp(mean_[i], limits_min_[i], limits_max_[i]);
             }
 
             // Update stddev (weighted standard deviation)
