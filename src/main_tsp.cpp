@@ -179,9 +179,9 @@ int main(int argc, char** argv) {
                                        gd_iterations, init_points, collision_weight, z_min);
 
     Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
-    end_pt[2] += 0.8;
+    end_pt[2] += 0.1;
     Point start_pt;
-    start_pt << -0.5, 0.7, 0.8, 1.5708;
+    start_pt << -0.5, 0.7, 0.1, 1.5708;
 
     // Initial Planning Attempt
     execute_planning_cycle(path_planner, start_pt, end_pt,
