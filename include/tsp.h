@@ -21,6 +21,7 @@
 #include "Collision.h"
 #include <memory>
 #include <cmath>
+#include <chrono>
 
 #define PROFILE_TIME 0
 
@@ -46,6 +47,14 @@ namespace tsp {
                 : via_point(std::move(vp)), gradient_steps(std::move(gs)), status(s) {}
     };
 
+    struct PlanningStats {
+        double planning_time_ms{0.0};
+        size_t successful_count{0};
+        size_t failed_count{0};
+        bool is_iterative{false};
+        bool gradient_descent_used{false};
+    };
+
     class TaskSpacePlanner {
     private:
         using SplineFitter = Eigen::SplineFitting<Spline>;
@@ -67,6 +76,8 @@ namespace tsp {
         double z_min_;
         Point limits_min_, limits_max_;
         bool enable_gradient_descent_;
+
+        PlanningStats stats_;
 
         // Algorithm state (updated each plan call)
         Point mean_, stddev_;
@@ -145,9 +156,8 @@ namespace tsp {
         }
 
         std::vector<PathCandidate> plan(const Point &start, const Point &end, bool iterate_flag = false) {
-#if PROFILE_TIME
-            auto start_time = std::chrono::high_resolution_clock::now();
-#endif
+            auto start_time = std::chrono::steady_clock::now();
+            stats_.is_iterative = iterate_flag;
 
             // Initialize distribution
             if (!iterate_flag) {
@@ -199,11 +209,11 @@ namespace tsp {
                 adaptStddev(false);  // increase stddev for exploration
             }
 
-#if PROFILE_TIME
-            auto end_time = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
-            std::cerr << "Total plan duration [ms]: " << duration.count() / 1e3 << std::endl;
-#endif
+            auto end_time = std::chrono::steady_clock::now();
+            stats_.planning_time_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
+            stats_.successful_count = successful_candidates_.size();
+            stats_.failed_count = failed_candidates_.size();
+            stats_.gradient_descent_used = enable_gradient_descent_ && gd_iterations_ > 0;
 
             return successful_candidates_;
         }
@@ -216,6 +226,8 @@ namespace tsp {
         Point get_current_stddev() const { return stddev_; }
         Point get_limits_min() const { return limits_min_; }
         Point get_limits_max() const { return limits_max_; }
+        PlanningStats get_planning_stats() const { return stats_; }
+        void set_enable_gradient_descent(bool enable) { enable_gradient_descent_ = enable; }
 
         static Point evaluate(double u, const Spline &spline) { return spline(u); }
         [[nodiscard]] Point evaluate(double u) const { return path_spline_(u); }

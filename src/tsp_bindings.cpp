@@ -77,6 +77,13 @@ PYBIND11_MODULE(_tsp, m) {
                        ", gradient_steps=" + std::to_string(pc.gradient_steps.size()) + ")";
             });
 
+    py::class_<PlanningStats>(m, "PlanningStats")
+            .def_readonly("planning_time_ms", &PlanningStats::planning_time_ms)
+            .def_readonly("successful_count", &PlanningStats::successful_count)
+            .def_readonly("failed_count", &PlanningStats::failed_count)
+            .def_readonly("is_iterative", &PlanningStats::is_iterative)
+            .def_readonly("gradient_descent_used", &PlanningStats::gradient_descent_used);
+
     // Bind Gradient class (for advanced users)
     py::class_<Gradient<4>>(m, "Gradient")
             .def(py::init<typename Gradient<4>::CostFunction, const Point&, const Point&>(),
@@ -198,6 +205,10 @@ PYBIND11_MODULE(_tsp, m) {
                  "Get minimum sampling limits for each dimension")
             .def("get_limits_max", &TaskSpacePlanner::get_limits_max,
                  "Get maximum sampling limits for each dimension")
+            .def("get_planning_stats", &TaskSpacePlanner::get_planning_stats,
+                 "Get statistics from last planning iteration")
+            .def("set_enable_gradient_descent", &TaskSpacePlanner::set_enable_gradient_descent,
+                 py::arg("enable"), "Enable or disable gradient descent refinement")
 
                     // Spline inspection methods
             .def("get_via_pts", &TaskSpacePlanner::get_via_pts,

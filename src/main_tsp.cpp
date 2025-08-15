@@ -178,10 +178,17 @@ int main(int argc, char** argv) {
                                        elite_fraction, sample_count, check_points,
                                        gd_iterations, init_points, collision_weight, z_min);
 
-    Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
-    end_pt[2] += 0.8;
+    std::string start_body_name = "block_green/";
+    std::string end_body_name = "block_orange/";
+    Point end_pt = Utility::get_body_point<Point>(m, d, end_body_name);
+    // Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
+    // end_pt[2] += 0.8;
     Point start_pt;
-    start_pt << -0.5, 0.7, 0.8, 1.5708;
+    // start_pt << -0.5, 0.7, 0.8, 1.5708;
+    start_pt = Utility::get_body_point<Point>(m, d, start_body_name);
+
+    end_pt[2] += 0.02;
+    start_pt[2] += 0.02;
 
     // Initial Planning Attempt
     execute_planning_cycle(path_planner, start_pt, end_pt,
