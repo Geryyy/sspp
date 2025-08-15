@@ -160,17 +160,17 @@ int main(int argc, char** argv) {
 
     // Configure planner parameters
     double stddev_initial = 0.3;    // Initial sampling spread
-    double stddev_min = 0.01;       // Minimum stddev (convergence limit)
-    double stddev_max = 2.0;        // Maximum stddev (exploration limit)
+    double stddev_min = 0.001;       // Minimum stddev (convergence limit)
+    double stddev_max = 0.5;        // Maximum stddev (exploration limit)
     double stddev_increase_factor = 1.5;  // Increase factor when no success
-    double stddev_decay_factor = 0.95;    // Decay factor when successful
+    double stddev_decay_factor = 0.999;    // Decay factor when successful
     double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
     int sample_count = 20;          // Number of via point candidates per iteration
     int check_points = 50;          // Points checked along spline for collision
-    int gd_iterations = 5;         // Gradient descent iterations
+    int gd_iterations = 10;         // Gradient descent iterations
     int init_points = 3;            // Number of initial via points
     double collision_weight = 1.0;  // Weight for collision cost in path evaluation
-    double z_min = 0.0;             // Minimum z-coordinate (ground level)
+    double z_min = 0.1;             // Minimum z-coordinate (ground level)
 
     tsp::TaskSpacePlanner path_planner(m, coll_body_name,
                                        stddev_initial, stddev_min, stddev_max,
