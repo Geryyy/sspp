@@ -39,11 +39,16 @@ namespace tsp {
     };
 
     struct PathCandidate {
+        // via_point: original sampled point (from Gaussian)
         Point via_point;
+        // refined_via_point: (optional) result after GD refinement; if not set, use via_point
+        std::optional<Point> refined_via_point;
         std::vector<GradientStepType> gradient_steps;
         SolverStatus status;
-        PathCandidate(Point vp, std::vector<GradientStepType> gs, SolverStatus s)
-                : via_point(std::move(vp)), gradient_steps(std::move(gs)), status(s) {}
+        PathCandidate(Point vp, std::vector<GradientStepType> gs, SolverStatus s,
+                      std::optional<Point> refined = std::nullopt)
+                : via_point(std::move(vp)), refined_via_point(std::move(refined)),
+                  gradient_steps(std::move(gs)), status(s) {}
     };
 
     class TaskSpacePlanner {
@@ -68,6 +73,16 @@ namespace tsp {
         Point limits_min_, limits_max_;
         bool enable_gradient_descent_;
 
+        // --- New stability knobs (minimal invasive) ---
+        // floor for stddev to avoid one-shot collapse
+        double sigma_floor_;
+        // EMA factor for variance update (0..1); 0.2 is conservative
+        double var_ema_beta_;
+        // cap how far mean moves per update (0..1)
+        double mean_lr_;
+        // trust-region cap for GD refinement displacement (in task-space units)
+        double max_step_norm_;
+
         // Algorithm state (updated each plan call)
         Point mean_, stddev_;
         std::vector<PathCandidate> successful_candidates_, failed_candidates_;
@@ -90,14 +105,20 @@ namespace tsp {
                                 double z_min = 0.0,
                                 Point limits_min = -Point::Ones() * 2.0,
                                 Point limits_max = Point::Ones() * 2.0,
-                                bool enable_gradient_descent = true)
+                                bool enable_gradient_descent = true,
+                                // New params with safe defaults
+                                double sigma_floor = 0.05,
+                                double var_ema_beta = 0.2,
+                                double mean_lr = 0.5,
+                                double max_step_norm = 0.1)
                 : model_(model),
                 stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                 stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                 elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                 gd_iterations_(gd_iterations), init_points_(init_points),
                 collision_weight_(collision_weight), z_min_(z_min), limits_min_(limits_min), limits_max_(limits_max),
-                enable_gradient_descent_(enable_gradient_descent) {
+                enable_gradient_descent_(enable_gradient_descent),
+                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm) {
             init_collision_env(std::move(body_name));
         }
 
@@ -116,13 +137,19 @@ namespace tsp {
                                 double z_min = 0.0,
                                 Point limits_min = -Point::Ones() * 2.0,
                                 Point limits_max = Point::Ones() * 2.0,
-                                bool enable_gradient_descent = true)
+                                bool enable_gradient_descent = true,
+                                // New params with safe defaults
+                                double sigma_floor = 0.05,
+                                double var_ema_beta = 0.2,
+                                double mean_lr = 0.5,
+                                double max_step_norm = 0.1)
                 : stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                 stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                 elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                 gd_iterations_(gd_iterations), init_points_(init_points),
                 collision_weight_(collision_weight), z_min_(z_min), limits_min_(limits_min), limits_max_(limits_max),
-                enable_gradient_descent_(enable_gradient_descent) {
+                enable_gradient_descent_(enable_gradient_descent),
+                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm) {
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
             if (!model_) throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
             init_collision_env(std::move(body_name));
@@ -155,9 +182,9 @@ namespace tsp {
                 mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
 
                 // Ensure initial mean is within limits
-            for (int i = 0; i < kDOF; ++i) {
-                mean_[i] = std::clamp(mean_[i], limits_min_[i], limits_max_[i]);
-            }
+                for (int i = 0; i < kDOF; ++i) {
+                    mean_[i] = std::clamp(mean_[i], limits_min_[i], limits_max_[i]);
+                }
 
                 stddev_ = Point::Ones() * stddev_initial_;
             }
@@ -189,7 +216,7 @@ namespace tsp {
 
             // Optimize candidates for collision avoidance
             collision_optimization(via_point_candidates, successful_candidates_, failed_candidates_,
-                                   sample_count_, check_points_, gd_iterations_);
+                                   (int)via_point_candidates.size(), check_points_, gd_iterations_);
 
             // Update distribution based on results
             if (!successful_candidates_.empty()) {
@@ -197,6 +224,8 @@ namespace tsp {
                 findBestPath(successful_candidates_, path_spline_, check_points_);
             } else {
                 adaptStddev(false);  // increase stddev for exploration
+                // Enforce sigma floor
+                stddev_ = stddev_.cwiseMax(Point::Constant(sigma_floor_));
             }
 
 #if PROFILE_TIME
@@ -303,29 +332,36 @@ namespace tsp {
 
                 pt[i] = sample;
             }
-            
+
             // Handle yaw dimension (index 3) with proper wrapping
             if (limits_min[3] != limits_max[3]) {  // Only if yaw limits are different
                 std::normal_distribution<double> yaw_dist(mean[3], stddev[3]);
                 double yaw_sample = yaw_dist(gen);
-                
+
                 // Wrap yaw to be within [limits_min[3], limits_max[3]]
                 double yaw_range = limits_max[3] - limits_min[3];
                 while (yaw_sample < limits_min[3]) yaw_sample += yaw_range;
                 while (yaw_sample > limits_max[3]) yaw_sample -= yaw_range;
-                
+
                 pt[3] = yaw_sample;
             } else {
                 pt[3] = mean[3];  // Use mean if min/max are the same
             }
-            
+
             return pt;
         }
 
+        // Choose which via point to evaluate with: prefer refined if available
+        Point pick_eval_via_point(const PathCandidate& candidate) const {
+            if (candidate.refined_via_point.has_value()) return candidate.refined_via_point.value();
+            return candidate.via_point;
+        }
+
         double computePathCost(const PathCandidate& candidate) {
-            auto spline = path_from_via_pt(candidate.via_point);
+            const Point eval_via = pick_eval_via_point(candidate);
+            auto spline = path_from_via_pt(eval_via);
             double arc_length = computeArcLength(spline, check_points_);
-            double collision_cost_val = collision_cost(candidate.via_point, check_points_);
+            double collision_cost_val = collision_cost(eval_via, check_points_);
             return arc_length + collision_weight_ * collision_cost_val;
         }
 
@@ -352,6 +388,25 @@ namespace tsp {
             return cost;
         }
 
+        static Point clamp_step_norm(const Point& origin, const Point& candidate, double max_norm) {
+            if (max_norm <= 0.0) return candidate;
+            Point delta = candidate - origin;
+            double n = delta.norm();
+            if (n > max_norm) {
+                return origin + (delta * (max_norm / n));
+            }
+            return candidate;
+        }
+
+        static double wrap_angle_diff(double a, double b, double min, double max) {
+            // returns (a - b) wrapped into [-range/2, range/2]
+            const double range = max - min;
+            double d = a - b;
+            while (d >  0.5 * range) d -= range;
+            while (d < -0.5 * range) d += range;
+            return d;
+        }
+
         void collision_optimization(const std::vector<Point> &via_point_candidates,
                                     std::vector<PathCandidate> &successful_candidates,
                                     std::vector<PathCandidate> &failed_candidates,
@@ -371,15 +426,19 @@ namespace tsp {
                     GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
                     auto solver_status = graddesc.optimize(via_point_candidates[i]);
 
-                    PathCandidate candidate(graddesc.get_result(), graddesc.get_gradient_descent_steps(), solver_status);
-                    (solver_status == SolverStatus::Converged ? successful_candidates : failed_candidates).push_back(candidate);
+                    // Trust-region post-clip (minimal-invasive)
+                    Point refined = clamp_step_norm(via_point_candidates[i], graddesc.get_result(), max_step_norm_);
+
+                    bool is_collision_free = (collision_cost(refined, check_points) == 0.0);
+                    PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
+                                            is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
+                    (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
                 } else {
                     Point candidate_via_pt = via_point_candidates[i];
                     bool is_collision_free = (collision_cost(candidate_via_pt, check_points) == 0.0);
 
                     PathCandidate candidate(candidate_via_pt, {},
                                           is_collision_free ? SolverStatus::Converged : SolverStatus::Failed);
-
                     (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
                 }
             }
@@ -400,8 +459,13 @@ namespace tsp {
                         GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
                         auto solver_status = graddesc.optimize(via_point_candidates[i]);
 
-                        PathCandidate candidate(graddesc.get_result(), graddesc.get_gradient_descent_steps(), solver_status);
-                        (solver_status == SolverStatus::Converged ? successful_thread : failed_thread).push_back(candidate);
+                        // Trust-region post-clip (minimal-invasive)
+                        Point refined = clamp_step_norm(via_point_candidates[i], graddesc.get_result(), max_step_norm_);
+
+                        bool is_collision_free = (collision_cost(refined, check_points) == 0.0);
+                        PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
+                                                is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
+                        (is_collision_free ? successful_thread : failed_thread).push_back(candidate);
                     } else {
                         // Pure sampling - no gradient descent refinement
                         Point candidate_via_pt = via_point_candidates[i];
@@ -426,10 +490,15 @@ namespace tsp {
 #endif
         }
 
+        bool is_candidate_feasible(const PathCandidate& c, int check_points) {
+            const Point eval_via = pick_eval_via_point(c);
+            return collision_cost(eval_via, check_points) == 0.0;
+        }
+
         void updateDistributionFromElites() {
             if (successful_candidates_.empty()) return;
 
-            // Sort by path quality (lower cost = better)
+            // Sort by path quality (lower cost = better); evaluate cost on refined if present
             std::sort(successful_candidates_.begin(), successful_candidates_.end(),
                       [this](const PathCandidate& a, const PathCandidate& b) {
                           return computePathCost(a) < computePathCost(b);
@@ -438,40 +507,52 @@ namespace tsp {
             // Select top elites
             int num_elites = std::max(1, static_cast<int>(successful_candidates_.size() * elite_fraction_));
 
-            // Compute log-based weights (CMA-ES style)
+            // Compute log-based weights (CMA-ES style) on elites
             std::vector<double> weights(num_elites);
             double weight_sum = 0.0;
             for (int i = 0; i < num_elites; ++i) {
                 weights[i] = std::log(num_elites + 0.5) - std::log(i + 1.0);
                 weight_sum += weights[i];
             }
-
-            // Normalize weights
             for (auto& w : weights) w /= weight_sum;
 
-            // Update mean (weighted average of elite via points)
-            Point new_mean = Point::Zero();
+            // Update mean (weighted average of ORIGINAL sampled via points, not refined)
+            Point elite_mean = Point::Zero();
             for (int i = 0; i < num_elites; ++i) {
-                new_mean += weights[i] * successful_candidates_[i].via_point;
+                elite_mean += weights[i] * successful_candidates_[i].via_point;
             }
-            mean_ = new_mean;
-            mean_[2] = std::max(mean_[2], z_min_);  // ensure above ground
+            // Learning-rate blend to avoid big jumps
+            Point new_mean = mean_ + mean_lr_ * (elite_mean - mean_);
 
+            new_mean[2] = std::max(new_mean[2], z_min_);  // ensure above ground
             // Ensure mean stays within limits
             for (int i = 0; i < kDOF; ++i) {
-                mean_[i] = std::clamp(mean_[i], limits_min_[i], limits_max_[i]);
+                new_mean[i] = std::clamp(new_mean[i], limits_min_[i], limits_max_[i]);
             }
+            mean_ = new_mean;
 
-            // Update stddev (weighted standard deviation)
-            Point variance = Point::Zero();
+            // Weighted variance from ORIGINAL sampled via points
+            Point var_elite = Point::Zero();
             for (int i = 0; i < num_elites; ++i) {
                 Point diff = successful_candidates_[i].via_point - mean_;
-                variance += weights[i] * diff.cwiseProduct(diff);
+                // handle yaw wrapping if yaw limits are meaningful
+                if (limits_min_[3] != limits_max_[3]) {
+                    diff[3] = wrap_angle_diff(successful_candidates_[i].via_point[3], mean_[3], limits_min_[3], limits_max_[3]);
+                }
+                var_elite += weights[i] * diff.cwiseProduct(diff);
             }
-            stddev_ = variance.cwiseSqrt();
+
+            // EMA blend with previous variance
+            Point prev_var = stddev_.cwiseProduct(stddev_);
+            Point blended_var = (1.0 - var_ema_beta_) * prev_var + var_ema_beta_ * var_elite;
+            stddev_ = blended_var.cwiseSqrt();
 
             // Apply bounds and adaptive decay
             adaptStddev(true);
+
+            // Enforce sigma floor after adapt
+            stddev_ = stddev_.cwiseMax(Point::Constant(sigma_floor_))
+                               .cwiseMin(Point::Ones() * stddev_max_);
         }
 
         void adaptStddev(bool successful) {
@@ -481,7 +562,7 @@ namespace tsp {
                 stddev_ *= stddev_increase_factor_;  // increase for exploration
             }
 
-            // Apply bounds
+            // Apply hard bounds
             stddev_ = stddev_.cwiseMax(Point::Ones() * stddev_min_)
                     .cwiseMin(Point::Ones() * stddev_max_);
         }
@@ -489,18 +570,44 @@ namespace tsp {
         bool findBestPath(const std::vector<PathCandidate> &candidates, Spline &best_spline, int check_points = 10) {
             if (candidates.empty()) return false;
 
-            double min_cost = std::numeric_limits<double>::infinity();
-            size_t best_idx = 0;
+            // First pass: pick best among feasible (collision-free) candidates
+            double min_cost_feasible = std::numeric_limits<double>::infinity();
+            size_t best_idx_feasible = candidates.size();
 
             for (size_t i = 0; i < candidates.size(); ++i) {
-                double cost = computePathCost(candidates[i]);
-                if (cost < min_cost) {
-                    min_cost = cost;
-                    best_idx = i;
+                const Point eval_via = pick_eval_via_point(candidates[i]);
+                double c_cost = collision_cost(eval_via, check_points);
+                if (c_cost == 0.0) {
+                    auto spline = path_from_via_pt(eval_via);
+                    double arc = computeArcLength(spline, check_points);
+                    double total = arc + collision_weight_ * c_cost; // c_cost = 0
+                    if (total < min_cost_feasible) {
+                        min_cost_feasible = total;
+                        best_idx_feasible = i;
+                    }
                 }
             }
 
-            best_spline = path_from_via_pt(candidates[best_idx].via_point);
+            size_t chosen = candidates.size();
+            if (best_idx_feasible < candidates.size()) {
+                chosen = best_idx_feasible;
+            } else {
+                // Fallback: choose least-cost overall (even if colliding)
+                double min_cost = std::numeric_limits<double>::infinity();
+                for (size_t i = 0; i < candidates.size(); ++i) {
+                    double cost = computePathCost(candidates[i]);
+                    if (cost < min_cost) {
+                        min_cost = cost;
+                        chosen = i;
+                    }
+                }
+            }
+
+            if (chosen >= candidates.size()) return false;
+
+            // Build spline from the via point used for evaluation (refined if exists)
+            Point eval_via = pick_eval_via_point(candidates[chosen]);
+            best_spline = path_from_via_pt(eval_via);
             return true;
         }
     };
