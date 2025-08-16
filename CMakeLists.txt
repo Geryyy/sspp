@@ -65,6 +65,13 @@ add_executable(tsp_standalone src/main_tsp.cpp include/Timer.h include/tsp.h inc
         include/ui.h
         src/ui.cpp include/Collision.h)
 
+add_executable(tsp_benchmark src/main_tsp_benchmark.cpp include/Timer.h include/tsp.h include/utility.h
+        include/Gradient.h
+        include/visu.h
+        src/visu.cpp
+        include/ui.h
+        src/ui.cpp include/Collision.h)
+
 # Link libraries
 
 
@@ -85,6 +92,23 @@ else()
             PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
+if(DEBUG_SINGLE_THREAD)
+    # Remove OpenMP flags
+    target_link_libraries(tsp_benchmark
+            PUBLIC mujoco::mujoco
+            PUBLIC Threads::Threads
+            PUBLIC Eigen3::Eigen
+            PUBLIC glfw)
+else()
+
+    target_link_libraries(tsp_benchmark
+            PUBLIC mujoco::mujoco
+            PUBLIC Threads::Threads
+            PUBLIC Eigen3::Eigen
+            PUBLIC glfw
+            PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 # Link gperftools (for memory and CPU profiling)
 if(GPERFTOOLS_LIBRARY)
     target_link_libraries(tsp_standalone PUBLIC -ltcmalloc -lprofiler)
@@ -93,6 +117,12 @@ endif()
 if(OpenMP_CXX_FOUND)
     target_link_libraries(tsp_standalone PUBLIC OpenMP::OpenMP_CXX)
 endif()
+
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(tsp_benchmark PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 
 # SampledSplinePathPlanner bindings
 pybind11_add_module(_sspp src/sspp_bindings.cpp)
@@ -119,6 +149,7 @@ add_library(sspp STATIC
     include/Collision.h
     include/Timer.h
     include/tsp.h
+        src/main_tsp_benchmark.cpp
 )
 
 target_include_directories(sspp
