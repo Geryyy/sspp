@@ -21,8 +21,8 @@ python3 benchmark_vpsto.py \
   --hooks ./hooks.py \
   --body gripper_collision_with_block/ \
   --ndof 4 \
-  --q0 0.10,0.00,0.40,1.57 \
-  --qT 0.60,0.20,0.30,0.00 \
+  --q0 0.5,0.15,0.116,1.57 \
+  --qT 0.5,-0.05,0.116,0.00 \
   --N 50 \
   --N_via 3 \
   --N_eval 50 \
@@ -34,4 +34,23 @@ python3 benchmark_vpsto.py \
   --preview_iter 40 \
   --preview_fps 60
 
+```
+
+
+no preview 
+```bash
+python3 benchmark_vpsto.py \
+  --xml /home/gebmer/repos/robocrane/sspp/mjcf/robocrane/robocrane.xml \
+  --hooks ./hooks.py \
+  --body gripper_collision_with_block/ \
+  --ndof 4 \
+  --q0 0.5,0.15,0.116,1.57 \
+  --qT 0.5,-0.05,0.116,0.00 \
+  --N 50 \
+  --N_via 3 \
+  --N_eval 50 \
+  --pop_size 100 \
+  --max_iter 60 \
+  --sigma_init 4.0 \
+  --lam_coll 1e3 
 ```
