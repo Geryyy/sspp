@@ -83,6 +83,12 @@ namespace tsp {
         // trust-region cap for GD refinement displacement (in task-space units)
         double max_step_norm_;
 
+        // --- Floor clearance penalty knobs ---
+        // small positive margin above floor to encourage clearance
+        double floor_margin_;
+        // scale of the floor penalty (hinge-squared)
+        double floor_penalty_scale_;
+
         // Algorithm state (updated each plan call)
         Point mean_, stddev_;
         std::vector<PathCandidate> successful_candidates_, failed_candidates_;
@@ -110,7 +116,10 @@ namespace tsp {
                                 double sigma_floor = 0.05,
                                 double var_ema_beta = 0.2,
                                 double mean_lr = 0.5,
-                                double max_step_norm = 0.1)
+                                double max_step_norm = 0.1,
+                                // Floor penalty defaults
+                                double floor_margin = 0.01,
+                                double floor_penalty_scale = 10.0)
                 : model_(model),
                 stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                 stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
@@ -118,7 +127,8 @@ namespace tsp {
                 gd_iterations_(gd_iterations), init_points_(init_points),
                 collision_weight_(collision_weight), z_min_(z_min), limits_min_(limits_min), limits_max_(limits_max),
                 enable_gradient_descent_(enable_gradient_descent),
-                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm) {
+                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm),
+                floor_margin_(floor_margin), floor_penalty_scale_(floor_penalty_scale) {
             init_collision_env(std::move(body_name));
         }
 
@@ -142,14 +152,18 @@ namespace tsp {
                                 double sigma_floor = 0.05,
                                 double var_ema_beta = 0.2,
                                 double mean_lr = 0.5,
-                                double max_step_norm = 0.1)
+                                double max_step_norm = 0.1,
+                                // Floor penalty defaults
+                                double floor_margin = 0.01,
+                                double floor_penalty_scale = 10.0)
                 : stddev_initial_(stddev_initial), stddev_min_(stddev_min), stddev_max_(stddev_max),
                 stddev_increase_factor_(stddev_increase_factor), stddev_decay_factor_(stddev_decay_factor),
                 elite_fraction_(elite_fraction), sample_count_(sample_count), check_points_(check_points),
                 gd_iterations_(gd_iterations), init_points_(init_points),
                 collision_weight_(collision_weight), z_min_(z_min), limits_min_(limits_min), limits_max_(limits_max),
                 enable_gradient_descent_(enable_gradient_descent),
-                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm) {
+                sigma_floor_(sigma_floor), var_ema_beta_(var_ema_beta), mean_lr_(mean_lr), max_step_norm_(max_step_norm),
+                floor_margin_(floor_margin), floor_penalty_scale_(floor_penalty_scale) {
             model_ = mj_loadXML(xml_string.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
             if (!model_) throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
             init_collision_env(std::move(body_name));
@@ -361,7 +375,7 @@ namespace tsp {
             const Point eval_via = pick_eval_via_point(candidate);
             auto spline = path_from_via_pt(eval_via);
             double arc_length = computeArcLength(spline, check_points_);
-            double collision_cost_val = collision_cost(eval_via, check_points_);
+            double collision_cost_val = collision_cost(eval_via, check_points_); // includes floor penalty by default
             return arc_length + collision_weight_ * collision_cost_val;
         }
 
@@ -377,13 +391,26 @@ namespace tsp {
             return total_length;
         }
 
-        double collision_cost(const Point &via_pt, int eval_cnt, bool use_center_dist = true) {
+        double floor_penalty(const Point& p) const {
+            // Penalize being below z_min_ + floor_margin_ (hinge-squared)
+            double target = z_min_ + floor_margin_;
+            double deficit = target - p[2];
+            if (deficit <= 0.0) return 0.0;
+            return floor_penalty_scale_ * deficit * deficit;
+        }
+
+        // include_floor_penalty: true when used for GD and for cost ranking; false for feasibility tests
+        double collision_cost(const Point &via_pt, int eval_cnt, bool use_center_dist = true, bool include_floor_penalty = true) {
             Spline spline = path_from_via_pt(via_pt);
             double cost = 0.0;
 
             for (int i = 0; i <= eval_cnt; ++i) {
                 double u = static_cast<double>(i) / eval_cnt;
-                cost += collision_env_vec[omp_get_thread_num()]->collision_point_cost(spline(u), use_center_dist);
+                Point p = spline(u);
+                cost += collision_env_vec[omp_get_thread_num()]->collision_point_cost(p, use_center_dist);
+                if (include_floor_penalty) {
+                    cost += floor_penalty(p);
+                }
             }
             return cost;
         }
@@ -420,7 +447,8 @@ namespace tsp {
             for (int i = 0; i < sample_count; ++i) {
                 if (enable_gradient_descent_ && gd_iterations > 0) {
                     auto collision_cost_lambda = [&](const Point &via_pt) {
-                        return collision_cost(via_pt, check_points);
+                        // include floor penalty to help push out of the ground
+                        return collision_cost(via_pt, check_points, true, true);
                     };
 
                     GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
@@ -429,13 +457,14 @@ namespace tsp {
                     // Trust-region post-clip (minimal-invasive)
                     Point refined = clamp_step_norm(via_point_candidates[i], graddesc.get_result(), max_step_norm_);
 
-                    bool is_collision_free = (collision_cost(refined, check_points) == 0.0);
+                    // Feasibility check must ignore floor-penalty (pure collision feasibility)
+                    bool is_collision_free = (collision_cost(refined, check_points, true, false) == 0.0);
                     PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
                                             is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
                     (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
                 } else {
                     Point candidate_via_pt = via_point_candidates[i];
-                    bool is_collision_free = (collision_cost(candidate_via_pt, check_points) == 0.0);
+                    bool is_collision_free = (collision_cost(candidate_via_pt, check_points, true, false) == 0.0);
 
                     PathCandidate candidate(candidate_via_pt, {},
                                           is_collision_free ? SolverStatus::Converged : SolverStatus::Failed);
@@ -453,7 +482,8 @@ namespace tsp {
                     if (enable_gradient_descent_ && gd_iterations > 0) {
                         // With gradient descent refinement
                         auto collision_cost_lambda = [&](const Point &via_pt) {
-                            return collision_cost(via_pt, check_points);
+                            // include floor penalty to help push out of the ground
+                            return collision_cost(via_pt, check_points, true, true);
                         };
 
                         GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
@@ -462,7 +492,7 @@ namespace tsp {
                         // Trust-region post-clip (minimal-invasive)
                         Point refined = clamp_step_norm(via_point_candidates[i], graddesc.get_result(), max_step_norm_);
 
-                        bool is_collision_free = (collision_cost(refined, check_points) == 0.0);
+                        bool is_collision_free = (collision_cost(refined, check_points, true, false) == 0.0);
                         PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
                                                 is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
                         (is_collision_free ? successful_thread : failed_thread).push_back(candidate);
@@ -471,7 +501,7 @@ namespace tsp {
                         Point candidate_via_pt = via_point_candidates[i];
 
                         // Check if via point leads to collision-free path
-                        bool is_collision_free = (collision_cost(candidate_via_pt, check_points) == 0.0);
+                        bool is_collision_free = (collision_cost(candidate_via_pt, check_points, true, false) == 0.0);
 
                         // Create candidate with original via point and empty gradient steps
                         PathCandidate candidate(candidate_via_pt, {},
@@ -492,7 +522,8 @@ namespace tsp {
 
         bool is_candidate_feasible(const PathCandidate& c, int check_points) {
             const Point eval_via = pick_eval_via_point(c);
-            return collision_cost(eval_via, check_points) == 0.0;
+            // Feasibility ignores floor penalty (pure collision)
+            return collision_cost(eval_via, check_points, true, false) == 0.0;
         }
 
         void updateDistributionFromElites() {
@@ -516,10 +547,12 @@ namespace tsp {
             }
             for (auto& w : weights) w /= weight_sum;
 
-            // Update mean (weighted average of ORIGINAL sampled via points, not refined)
+            // --- CES runs on GD-refined candidates ---
+            // Update mean from REFINED via points (fast shift out of collision)
             Point elite_mean = Point::Zero();
             for (int i = 0; i < num_elites; ++i) {
-                elite_mean += weights[i] * successful_candidates_[i].via_point;
+                const Point refined = pick_eval_via_point(successful_candidates_[i]);
+                elite_mean += weights[i] * refined;
             }
             // Learning-rate blend to avoid big jumps
             Point new_mean = mean_ + mean_lr_ * (elite_mean - mean_);
@@ -531,13 +564,14 @@ namespace tsp {
             }
             mean_ = new_mean;
 
-            // Weighted variance from ORIGINAL sampled via points
+            // Update variance from REFINED via points (keeps covariance aligned with where GD pushed)
             Point var_elite = Point::Zero();
             for (int i = 0; i < num_elites; ++i) {
-                Point diff = successful_candidates_[i].via_point - mean_;
+                const Point refined = pick_eval_via_point(successful_candidates_[i]);
+                Point diff = refined - mean_;
                 // handle yaw wrapping if yaw limits are meaningful
                 if (limits_min_[3] != limits_max_[3]) {
-                    diff[3] = wrap_angle_diff(successful_candidates_[i].via_point[3], mean_[3], limits_min_[3], limits_max_[3]);
+                    diff[3] = wrap_angle_diff(refined[3], mean_[3], limits_min_[3], limits_max_[3]);
                 }
                 var_elite += weights[i] * diff.cwiseProduct(diff);
             }
@@ -570,17 +604,18 @@ namespace tsp {
         bool findBestPath(const std::vector<PathCandidate> &candidates, Spline &best_spline, int check_points = 10) {
             if (candidates.empty()) return false;
 
-            // First pass: pick best among feasible (collision-free) candidates
+            // First pass: pick best among feasible (collision-free) candidates (feasibility ignores floor penalty)
             double min_cost_feasible = std::numeric_limits<double>::infinity();
             size_t best_idx_feasible = candidates.size();
 
             for (size_t i = 0; i < candidates.size(); ++i) {
                 const Point eval_via = pick_eval_via_point(candidates[i]);
-                double c_cost = collision_cost(eval_via, check_points);
+                double c_cost = collision_cost(eval_via, check_points, true, false);
                 if (c_cost == 0.0) {
                     auto spline = path_from_via_pt(eval_via);
                     double arc = computeArcLength(spline, check_points);
-                    double total = arc + collision_weight_ * c_cost; // c_cost = 0
+                    // For ranking feasible ones, you can still add the floor-penalized cost to prefer clearance:
+                    double total = arc + collision_weight_ * collision_cost(eval_via, check_points, true, true);
                     if (total < min_cost_feasible) {
                         min_cost_feasible = total;
                         best_idx_feasible = i;
@@ -592,7 +627,7 @@ namespace tsp {
             if (best_idx_feasible < candidates.size()) {
                 chosen = best_idx_feasible;
             } else {
-                // Fallback: choose least-cost overall (even if colliding)
+                // Fallback: choose least penalized overall (includes floor penalty)
                 double min_cost = std::numeric_limits<double>::infinity();
                 for (size_t i = 0; i < candidates.size(); ++i) {
                     double cost = computePathCost(candidates[i]);

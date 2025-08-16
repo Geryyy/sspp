@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
     double stddev_min = 0.001;       // Minimum stddev (convergence limit)
     double stddev_max = 0.5;        // Maximum stddev (exploration limit)
     double stddev_increase_factor = 1.5;  // Increase factor when no success
-    double stddev_decay_factor = 0.99;    // Decay factor when successful
+    double stddev_decay_factor = 0.9;    // Decay factor when successful
     double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
     int sample_count = 20;          // Number of via point candidates per iteration
     int check_points = 50;          // Points checked along spline for collision
