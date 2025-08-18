@@ -27,6 +27,11 @@
 namespace tsp {
     constexpr int kSplineDegree = 2;
     constexpr int kDOF = 4;
+} // namespace tsp
+
+#include "EfficientSplineGradient.h"
+
+namespace tsp {
     using Point = Eigen::Matrix<double, kDOF, 1>;
     using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
     using GradientStepType = GradientStep<kDOF>;
