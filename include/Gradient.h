@@ -65,8 +65,12 @@ namespace tsp {
                 return "MaxIterationsExceeded";
             case SolverStatus::BelowFloor:
                 return "BelowFloor";
-            default:
+            case SolverStatus::Invalid:
                 return "Invalid";
+            case SolverStatus::Failed:
+                return "Failed";
+            default:
+                return "should not happen";
         }
     }
 
@@ -109,24 +113,10 @@ namespace tsp {
                 GradientStep step(via_candidate, gradient, cost_function_(via_candidate));
                 steps.push_back(step);
 
-                // std::cout << "gd step " << k << " via_pt: " << via_candidate.transpose()
-                // << " gradient: " << gradient.transpose()
-                // << " step_size: " << step_size << std::endl;
 
                 // abort if gradient vanishes --> no collision
                 if (gradient.norm() < 1e-6) {
-                    // no collision
-                    // std::cerr << "gradient vanishes - abort" << std::endl;
-                    // std::cerr << "gradient.norm: " << gradient.norm() << std::endl;
-                    // std::cout << "graddesc converged!" << std::endl;
                     status = SolverStatus::Converged;
-                    break;
-                }
-
-                // abort if below ground
-                if (via_candidate[2] < 0) {
-                    // std::cout << "graddesc below floor!" << std::endl;
-                    status = SolverStatus::BelowFloor;
                     break;
                 }
 
@@ -138,6 +128,12 @@ namespace tsp {
                 if (k == iterations_ - 1) {
                     // std::cout << "graddesc max steps!" << std::endl;
                     status = SolverStatus::MaxIterationsExceeded;
+                }
+
+                if (via_candidate[2] < 0) {
+                    // std::cout << "graddesc below floor!" << std::endl;
+                    status = SolverStatus::BelowFloor;
+//                    break;
                 }
             }
             result = via_candidate;

@@ -35,6 +35,9 @@ mjvOption opt;
 mjvScene scn;
 mjrContext con;
 
+constexpr float SPHERE_SIZE = 0.01;
+constexpr float PATH_WIDTH = 0.2;
+
 std::vector<tsp::PathCandidate> path_candidates;
 std::vector<tsp::PathCandidate> failed_candidates;
 std::vector<tsp::Point> via_pts, sampled_via_pts;
@@ -120,6 +123,18 @@ void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
 }
 
 int main(int argc, char** argv) {
+
+    // --- Debug: OpenMP environment ---
+#ifdef _OPENMP
+    std::cout << "[OMP] OpenMP enabled" << std::endl;
+    std::cout << "[OMP] Max threads    : " << omp_get_max_threads() << std::endl;
+    std::cout << "[OMP] Num processors : " << omp_get_num_procs()   << std::endl;
+    std::cout << "[OMP] Dynamic threads: " << omp_get_dynamic()     << std::endl;
+    std::cout << "[OMP] Nested parallel: " << omp_get_nested()      << std::endl;
+#else
+    std::cout << "[OMP] OpenMP not enabled (compiled without -fopenmp)" << std::endl;
+#endif
+
     if (argc < 3) {
         std::cerr << "Usage: " << argv[0] << " <model_file> <collision_body_name>" << std::endl;
         return 1;
@@ -165,12 +180,13 @@ int main(int argc, char** argv) {
     double stddev_increase_factor = 1.5;  // Increase factor when no success
     double stddev_decay_factor = 0.9;    // Decay factor when successful
     double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
-    int sample_count = 20;          // Number of via point candidates per iteration
-    int check_points = 50;          // Points checked along spline for collision
-    int gd_iterations = 10;         // Gradient descent iterations
+    int sample_count = 15;          // Number of via point candidates per iteration
+    int check_points = 40;          // Points checked along spline for collision
+    int gd_iterations = 100;         // Gradient descent iterations
     int init_points = 3;            // Number of initial via points
     double collision_weight = 1.0;  // Weight for collision cost in path evaluation
     double z_min = 0.1;             // Minimum z-coordinate (ground level)
+    bool use_gradient_descent = true;
 
     Point limit_max, limit_min;
     limit_max << 0.7,0.7,0.6, 1.6; // Max limits for x, y, z, yaw
@@ -181,7 +197,7 @@ int main(int argc, char** argv) {
                                        stddev_increase_factor, stddev_decay_factor,
                                        elite_fraction, sample_count, check_points,
                                        gd_iterations, init_points, collision_weight, z_min,
-                                       limit_min, limit_max, true);
+                                       limit_min, limit_max, use_gradient_descent);
 
     std::string start_body_name = "block_green/";
     std::string end_body_name = "block_orange/";
@@ -240,12 +256,12 @@ int main(int argc, char** argv) {
         // Update scene and render
         mjv_updateScene(m, d, &opt, nullptr, &cam, mjCAT_ALL, &scn);
 
-        draw_sphere(&scn, convert_point(via_pts[0]), 0.03, start_color);
-        draw_sphere(&scn, convert_point(via_pts[2]), 0.03, end_color);
+        draw_sphere(&scn, convert_point(via_pts[0]), SPHERE_SIZE, start_color);
+        draw_sphere(&scn, convert_point(via_pts[2]), SPHERE_SIZE, end_color);
 
         if (vis_best_path) {
             auto pts = path_planner.get_path_pts(pts_cnt);
-            draw_path(&scn, convert_point_vector(pts), 0.2, path_color);
+            draw_path(&scn, convert_point_vector(pts), PATH_WIDTH, path_color);
         }
 
         // Visualize sampled via points

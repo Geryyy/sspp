@@ -29,7 +29,7 @@ namespace tsp {
     constexpr int kDOF = 4;
 } // namespace tsp
 
-#include "EfficientSplineGradient.h"
+//#include "EfficientSplineGradient.h"
 
 namespace tsp {
     using Point = Eigen::Matrix<double, kDOF, 1>;
@@ -447,36 +447,6 @@ namespace tsp {
             successful_candidates.clear();
             failed_candidates.clear();
 
-#ifdef DEBUG_SINGLE_THREAD
-            // Single-threaded debug version
-            for (int i = 0; i < sample_count; ++i) {
-                if (enable_gradient_descent_ && gd_iterations > 0) {
-                    auto collision_cost_lambda = [&](const Point &via_pt) {
-                        // include floor penalty to help push out of the ground
-                        return collision_cost(via_pt, check_points, true, true);
-                    };
-
-                    GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
-                    auto solver_status = graddesc.optimize(via_point_candidates[i]);
-
-                    // Trust-region post-clip (minimal-invasive)
-                    Point refined = clamp_step_norm(via_point_candidates[i], graddesc.get_result(), max_step_norm_);
-
-                    // Feasibility check must ignore floor-penalty (pure collision feasibility)
-                    bool is_collision_free = (collision_cost(refined, check_points, true, false) == 0.0);
-                    PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
-                                            is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
-                    (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
-                } else {
-                    Point candidate_via_pt = via_point_candidates[i];
-                    bool is_collision_free = (collision_cost(candidate_via_pt, check_points, true, false) == 0.0);
-
-                    PathCandidate candidate(candidate_via_pt, {},
-                                          is_collision_free ? SolverStatus::Converged : SolverStatus::Failed);
-                    (is_collision_free ? successful_candidates : failed_candidates).push_back(candidate);
-                }
-            }
-#else
             // Original OpenMP version
 #pragma omp parallel default(none) shared(via_point_candidates, check_points, gd_iterations, successful_candidates, failed_candidates, sample_count)
             {
@@ -485,13 +455,46 @@ namespace tsp {
 #pragma omp for schedule(dynamic, 1) nowait
                 for (int i = 0; i < sample_count; ++i) {
                     if (enable_gradient_descent_ && gd_iterations > 0) {
+
+                        // hyperparameters
+                        const double mu_barrier = 10.0;      // try 0.5–5.0
+                        const double z_safe     = z_min_ + floor_margin_;
+                        const double eps        = 1e-3;     // numerical cushion
+
+                        auto floor_barrier = [&](double z) {
+                            const double s = (z - z_safe);
+                            if (s <= eps) return -mu_barrier * std::log(eps); // clamp
+                            return -mu_barrier * std::log(s);
+                        };
+
+
                         // With gradient descent refinement
                         auto collision_cost_lambda = [&](const Point &via_pt) {
                             // include floor penalty to help push out of the ground
                             return collision_cost(via_pt, check_points, true, true);
                         };
 
-                        GradientDescentType graddesc(1e-3, gd_iterations, collision_cost_lambda, Point::Ones() * 1e-2);
+                        auto blended_cost = [&](const Point& via_pt) {
+                            Spline s = path_from_via_pt(via_pt);
+
+                            // path length (small weight helps with gradient directions)
+                            const double L = computeArcLength(s, check_points_);
+
+                            // collision + your existing floor penalty sampled along path
+                            const double C = collision_cost(via_pt, check_points, /*use_center_dist=*/true, /*include_floor_penalty=*/true);
+
+                            // **log barrier on the via point z** (cheap & effective)
+                            const double B = floor_barrier(via_pt[2]);
+
+                            // weights
+                            const double w_len = 0.1;
+                            const double w_col = collision_weight_;
+                            const double w_bar = 1.0;
+
+                            return w_len * L + w_col * C + w_bar * B;
+                        };
+
+                        GradientDescentType graddesc(1e-3, gd_iterations, blended_cost, Point::Ones() * 1e-2);
                         auto solver_status = graddesc.optimize(via_point_candidates[i]);
 
                         // Trust-region post-clip (minimal-invasive)
@@ -499,8 +502,9 @@ namespace tsp {
 
                         bool is_collision_free = (collision_cost(refined, check_points, true, false) == 0.0);
                         PathCandidate candidate(via_point_candidates[i], graddesc.get_gradient_descent_steps(),
-                                                is_collision_free ? SolverStatus::Converged : SolverStatus::Failed, refined);
+                                                solver_status, refined);
                         (is_collision_free ? successful_thread : failed_thread).push_back(candidate);
+
                     } else {
                         // Pure sampling - no gradient descent refinement
                         Point candidate_via_pt = via_point_candidates[i];
@@ -522,7 +526,32 @@ namespace tsp {
                     failed_candidates.insert(failed_candidates.end(), failed_thread.begin(), failed_thread.end());
                 }
             }
-#endif
+
+
+            // ---- Debug dump (outside any omp region) ----
+            auto dump = [](const std::vector<PathCandidate>& V, const char* tag) {
+                for (size_t k = 0; k < V.size(); ++k) {
+                    const auto& c = V[k];
+                    // adjust accessor: either a member 'gd_steps' or a getter
+                    const size_t nsteps =
+                            c.gradient_steps.size(); // or: c.gd_steps.size();
+
+                    // If you have an original candidate index stored, print it; otherwise use k.
+                    std::cout << "[GD] Candidate " << k << " " << tag
+                              << " after " << nsteps << " steps with status: " << SolverStatustoString(c.status) << std::endl;
+                }
+            };
+
+            dump(successful_candidates, "SUCCESS");
+            dump(failed_candidates,     "FAIL");
+
+            // Optional summary:
+            std::cout << "[GD] Summary: "
+                      << successful_candidates.size() << " success, "
+                      << failed_candidates.size()     << " fail" << std::endl;
+
+
+
         }
 
         bool is_candidate_feasible(const PathCandidate& c, int check_points) {
