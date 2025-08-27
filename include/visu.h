@@ -10,7 +10,7 @@
 #include <unsupported/Eigen/Splines>
 #include <mujoco/mujoco.h>
 
-#include "tsp.h"  // your modular adapter (TaskSpacePlanner, PathCandidate, etc.)
+#include "sspp/tsp.h"  // your modular adapter (TaskSpacePlanner, PathCandidate, etc.)
 
 namespace visu {
 

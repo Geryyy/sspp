@@ -5,7 +5,7 @@
 #ifndef UI_H
 #define UI_H
 
-#include"tsp.h"
+#include "sspp/tsp.h"
 #include <GLFW/glfw3.h>
 #include "mujoco/mujoco.h"
 

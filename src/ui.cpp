@@ -2,7 +2,7 @@
 // Created by gebmer on 02.03.25.
 //
 
-#include"tsp.h"
+#include"sspp/tsp.h"
 #include <GLFW/glfw3.h>
 #include "mujoco/mujoco.h"
 

@@ -13,7 +13,7 @@
 #include <omp.h>
 
 //#include "tsp.h"
-#include "tsp.h"
+#include "sspp/tsp.h"
 #include "utility.h"
 #include "visu.h"
 #include "ui.h"

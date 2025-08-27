@@ -10,7 +10,7 @@
 #include <mujoco/mujoco.h>
 #include <Eigen/Core>
 
-#include "tsp.h"
+#include "sspp/tsp.h"
 #include "utility.h"
 
 using Point = tsp::Point;
