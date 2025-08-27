@@ -1,198 +1,168 @@
 cmake_minimum_required(VERSION 3.20)
-project(sspp)
+project(sspp LANGUAGES CXX)
 
+# --- C++ standard & build type ------------------------------------------------
 set(CMAKE_CXX_STANDARD 20)
-
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Release)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# Use the desired compiler if not already set
+# --- Compiler selection (optional) -------------------------------------------
 if(NOT CMAKE_CXX_COMPILER)
-    find_program(LATEST_GCC g++-12)  # Change version if necessary
-    if(LATEST_GCC)
-        set(CMAKE_CXX_COMPILER ${LATEST_GCC} CACHE STRING "Path to the C++ compiler" FORCE)
-    endif()
+  find_program(LATEST_GCC g++-12)
+  if(LATEST_GCC)
+    set(CMAKE_CXX_COMPILER ${LATEST_GCC} CACHE STRING "C++ compiler" FORCE)
+  endif()
 endif()
 
-# Optimization flags
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -march=native -funroll-loops -ftree-vectorize")
+# --- Optimizations ------------------------------------------------------------
+set(CMAKE_CXX_FLAGS_RELEASE
+    "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto -march=native -funroll-loops -ftree-vectorize")
 
-#set( CMAKE_VERBOSE_MAKEFILE on )
+# --- Options -----------------------------------------------------------------
+option(DEBUG_SINGLE_THREAD "Disable OpenMP for debugging" OFF)
+option(ENABLE_PROFILE "Enable gperftools profiling" OFF)
 
-#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -O0")
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0")
+# --- Dependencies -------------------------------------------------------------
+add_subdirectory(extern/pybind11) # pybind11
 
-# Add profiling flags for gperftools (heap and CPU profiling)
-if(ENABLE_PROFILE)
-    # Link against tcmalloc for memory profiling
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_TCMALLOC -ltcmalloc")
-
-    # Enable heap profiling (you can set the HEAPPROFILE environment var at runtime)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTCMALLOC_HEAP_PROFILER")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTCMALLOC_PROFILE_PATH='/tmp/heapprof'")  # Optional: specify path
-
-    # Link against the profiler for CPU profiling
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCPU_PROFILER_ENABLED -lprofiler")
-
-    # Enable CPU profiling (set the CPUPROFILE environment var at runtime)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTCMALLOC_CPU_PROFILER")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DTCMALLOC_PROFILE_PATH='/tmp/cpuprofile'")  # Optional: specify path
-endif()
-
-# Add subdirectories
-add_subdirectory(extern/pybind11)
-
-# Find dependencies
 find_package(mujoco REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
-find_package(OpenMP REQUIRED)
+find_package(OpenMP)
 
-option(DEBUG_SINGLE_THREAD "Disable OpenMP for debugging" OFF)
+# glfw is provided by MuJoCo prebuilt, but if you need a separate find, add it.
+# find_package(glfw3 REQUIRED)
 
-
-
-#find_package(OpenMP REQUIRED)
-
+# --- Include dirs -------------------------------------------------------------
+# Put your headers (including the new modular ones) under include/
+# e.g., include/tsp_adapter_task_space_planner.h, tsp_*.h
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
-# Add executable
-add_executable(tsp_standalone src/main_tsp.cpp include/Timer.h include/tsp.h include/utility.h
-        include/Gradient.h
-        include/visu.h
-        src/visu.cpp
-        include/ui.h
-        src/ui.cpp include/Collision.h)
+# --- Small helper to link OpenMP conditionally -------------------------------
+function(link_openmp_if target)
+  if(NOT DEBUG_SINGLE_THREAD)
+    if(OpenMP_CXX_FOUND)
+      target_link_libraries(${target} PUBLIC OpenMP::OpenMP_CXX)
+      target_compile_definitions(${target} PUBLIC -D_USE_OPENMP)
+    endif()
+  else()
+    target_compile_definitions(${target} PUBLIC -DDEBUG_SINGLE_THREAD=1)
+  endif()
+endfunction()
 
-add_executable(tsp_benchmark src/main_tsp_benchmark.cpp include/Timer.h include/tsp.h include/utility.h
-        include/Gradient.h
-        include/visu.h
-        src/visu.cpp
-        include/ui.h
-        src/ui.cpp include/Collision.h)
-
-# Link libraries
-
-
-if(DEBUG_SINGLE_THREAD)
-    # Remove OpenMP flags
-    target_link_libraries(tsp_standalone
-            PUBLIC mujoco::mujoco
-            PUBLIC Threads::Threads
-            PUBLIC Eigen3::Eigen
-            PUBLIC glfw)
-else()
-
-    target_link_libraries(tsp_standalone
-            PUBLIC mujoco::mujoco
-            PUBLIC Threads::Threads
-            PUBLIC Eigen3::Eigen
-            PUBLIC glfw
-            PUBLIC OpenMP::OpenMP_CXX)
-endif()
-
-if(DEBUG_SINGLE_THREAD)
-    # Remove OpenMP flags
-    target_link_libraries(tsp_benchmark
-            PUBLIC mujoco::mujoco
-            PUBLIC Threads::Threads
-            PUBLIC Eigen3::Eigen
-            PUBLIC glfw)
-else()
-
-    target_link_libraries(tsp_benchmark
-            PUBLIC mujoco::mujoco
-            PUBLIC Threads::Threads
-            PUBLIC Eigen3::Eigen
-            PUBLIC glfw
-            PUBLIC OpenMP::OpenMP_CXX)
-endif()
-
-# Link gperftools (for memory and CPU profiling)
-if(GPERFTOOLS_LIBRARY)
-    target_link_libraries(tsp_standalone PUBLIC -ltcmalloc -lprofiler)
-endif()
-
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(tsp_standalone PUBLIC OpenMP::OpenMP_CXX)
-endif()
-
-
-if(OpenMP_CXX_FOUND)
-    target_link_libraries(tsp_benchmark PUBLIC OpenMP::OpenMP_CXX)
-endif()
-
-
-# SampledSplinePathPlanner bindings
-pybind11_add_module(_sspp src/sspp_bindings.cpp)
-target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
-
-install(TARGETS _sspp DESTINATION sspp)
-
-# TaskSpacePlanner bindings
-pybind11_add_module(_tsp src/tsp_bindings.cpp)
-target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen OpenMP::OpenMP_CXX)
-
-install(TARGETS _tsp DESTINATION sspp)
-
-
-# build library
-
-add_library(sspp STATIC
+# --- Sources (only .cpp files; headers are included automatically) -----------
+set(SSPP_COMMON_SRCS
     src/visu.cpp
     src/ui.cpp
+)
+
+set(SSPP_COMMON_INCLUDES
     include/visu.h
     include/ui.h
     include/utility.h
     include/Gradient.h
     include/Collision.h
     include/Timer.h
-    include/tsp.h
-        src/main_tsp_benchmark.cpp
+    # modular planner headers (adapter + modules)
+    include/tsp_adapter_task_space_planner.h
+    include/tsp_types.h
+    include/tsp_sampler.h
+    include/tsp_evaluator.h
+    include/tsp_elites.h
+    include/tsp_distribution.h
+    include/tsp_collision_world.h
+    include/tsp_path_model.h
+    include/tsp_planner.h
 )
 
+# --- Executables --------------------------------------------------------------
+add_executable(tsp_standalone
+    src/main_tsp.cpp
+    ${SSPP_COMMON_SRCS}
+    ${SSPP_COMMON_INCLUDES}
+)
+target_link_libraries(tsp_standalone
+    PUBLIC mujoco::mujoco
+    PUBLIC Threads::Threads
+    PUBLIC Eigen3::Eigen
+    PUBLIC glfw
+)
+link_openmp_if(tsp_standalone)
+
+add_executable(tsp_benchmark
+    src/main_tsp_benchmark.cpp
+    ${SSPP_COMMON_SRCS}
+    ${SSPP_COMMON_INCLUDES}
+)
+target_link_libraries(tsp_benchmark
+    PUBLIC mujoco::mujoco
+    PUBLIC Threads::Threads
+    PUBLIC Eigen3::Eigen
+    PUBLIC glfw
+)
+link_openmp_if(tsp_benchmark)
+
+# --- Profiling (optional) ----------------------------------------------------
+if(ENABLE_PROFILE)
+  # Expect gperftools in system linker path; adjust if needed with find_library
+  target_link_libraries(tsp_standalone PUBLIC profiler tcmalloc)
+  target_link_libraries(tsp_benchmark  PUBLIC profiler tcmalloc)
+  target_compile_definitions(tsp_standalone PUBLIC USE_TCMALLOC CPU_PROFILER_ENABLED)
+  target_compile_definitions(tsp_benchmark  PUBLIC USE_TCMALLOC CPU_PROFILER_ENABLED)
+endif()
+
+# --- Python bindings ----------------------------------------------------------
+pybind11_add_module(_sspp src/sspp_bindings.cpp)
+target_link_libraries(_sspp PRIVATE mujoco::mujoco Eigen3::Eigen)
+link_openmp_if(_sspp)
+target_include_directories(_sspp PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+pybind11_add_module(_tsp src/tsp_bindings.cpp)
+target_link_libraries(_tsp PRIVATE mujoco::mujoco Eigen3::Eigen)
+link_openmp_if(_tsp)
+target_include_directories(_tsp PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+install(TARGETS _sspp _tsp DESTINATION sspp)
+
+# --- Build static lib (optional; remove if unused) ---------------------------
+add_library(sspp STATIC
+    ${SSPP_COMMON_SRCS}
+    ${SSPP_COMMON_INCLUDES}
+)
 target_include_directories(sspp
-    PUBLIC
+  PUBLIC
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
-
 target_link_libraries(sspp
-    PUBLIC mujoco::mujoco
-    PUBLIC Eigen3::Eigen
-    PUBLIC OpenMP::OpenMP_CXX
+  PUBLIC mujoco::mujoco
+  PUBLIC Eigen3::Eigen
 )
+link_openmp_if(sspp)
 
-
-# Export the CMake package config
+# --- Install / export ---------------------------------------------------------
 include(CMakePackageConfigHelpers)
 
-# Create the targets file
 install(TARGETS sspp
         EXPORT ssppTargets
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        RUNTIME DESTINATION bin
         INCLUDES DESTINATION include)
 
-install(DIRECTORY include/
-        DESTINATION include)
+install(DIRECTORY include/ DESTINATION include)
 
-# Export targets and config
 install(EXPORT ssppTargets
         FILE ssppTargets.cmake
         NAMESPACE sspp::
         DESTINATION lib/cmake/sspp)
 
-# Generate and install the config file
 configure_package_config_file(
   "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ssppConfig.cmake.in"
   "${CMAKE_CURRENT_BINARY_DIR}/ssppConfig.cmake"
   INSTALL_DESTINATION lib/cmake/sspp
 )
-
-install(FILES
-  "${CMAKE_CURRENT_BINARY_DIR}/ssppConfig.cmake"
-  DESTINATION lib/cmake/sspp
-)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ssppConfig.cmake"
+        DESTINATION lib/cmake/sspp)

@@ -73,31 +73,43 @@ int main(int argc, char** argv) {
     mj_collision(m, d);
 
     // --- Planner setup ---
-    double stddev_initial = 0.3;
-    double stddev_min = 0.001;
-    double stddev_max = 0.5;
-    double stddev_increase_factor = 1.5;
-    double stddev_decay_factor = 0.9;
-    double elite_fraction = 0.3;
-    int    sample_count = 10;
-    int    check_points = 100;
-    int    gd_iterations = 8;
-    int    init_points = 3;
-    double collision_weight = 1.0;
-    double z_min = 0.1;
+    const double stddev_initial         = 0.2;
+    const double stddev_min             = 0.0001;
+    const double stddev_max             = 0.5;
+    const double stddev_increase_factor = 1.5;
+    const double stddev_decay_factor    = 0.9;
+    const double elite_fraction         = 0.3;
+    const int    sample_count           = 15;
+    const int    check_points           = 40;
+    const int    gd_iterations          = 100;
+    const int    init_points            = 3;
+    const double collision_weight       = 1.0;
+    const double z_min                  = 0.1;
+    const bool   use_gradient_descent   = false; // GD disabled (paper focus on CES)
 
-    Point limits_min, limits_max;
-    limits_min << 0.0, -0.7, 0.1, -1.6;
-    limits_max << 0.7,  0.7, 0.6,  1.6;
+// Advanced knobs
+    const double sigma_floor        = 0.005;
+    const double var_ema_beta       = 0.2;
+    const double mean_lr            = 0.5;
+    const double max_step_norm      = 0.1;
+    const double floor_margin       = 0.01;
+    const double floor_penalty_scale= 10.0;
+
+    Point limit_max, limit_min;
+    limit_max << 0.7,  0.7, 0.6,  1.6;
+    limit_min << 0.0, -0.7, 0.1, -1.6;
 
     tsp::TaskSpacePlanner planner(
-        m, collisionBodyName,
-        stddev_initial, stddev_min, stddev_max,
-        stddev_increase_factor, stddev_decay_factor,
-        elite_fraction, sample_count, check_points,
-        gd_iterations, init_points, collision_weight, z_min,
-        limits_min, limits_max, /*enable_gradient_descent=*/true
+            m, collisionBodyName,
+            stddev_initial, stddev_min, stddev_max,
+            stddev_increase_factor, stddev_decay_factor,
+            elite_fraction, sample_count, check_points,
+            gd_iterations, init_points, collision_weight, z_min,
+            limit_min, limit_max, use_gradient_descent,
+            sigma_floor, var_ema_beta, mean_lr, max_step_norm,
+            floor_margin, floor_penalty_scale
     );
+
 
     // --- Start/End points ---
     const Utility::BodyJointInfo coll_body_info = Utility::get_free_body_joint_info(collisionBodyName, m);
