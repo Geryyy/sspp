@@ -113,6 +113,15 @@ static std::vector<int> parse_budgets(const std::string& s) {
 }
 
 int main(int argc, char** argv) {
+#ifdef _OPENMP
+    std::cout << "[OMP] OpenMP enabled\n"
+              << "[OMP] Max threads    : " << omp_get_max_threads() << "\n"
+              << "[OMP] Num processors : " << omp_get_num_procs()   << "\n"
+              << "[OMP] Dynamic threads: " << omp_get_dynamic()     << "\n"
+              << "[OMP] Nested parallel: " << omp_get_nested()      << "\n";
+#else
+    std::cout << "[OMP] OpenMP not enabled (compiled without -fopenmp)\n";
+#endif
     // Usage:
     //   main_bench <model.xml> <collision_body> [N=50] [start_body=block_green/] [end_body=block_orange/] [num_vias=1]
     //              [--max_iter=60] [--budgets_ms=20,50,100]
@@ -130,7 +139,7 @@ int main(int argc, char** argv) {
     std::string end_body_name         = (argc >= 6 && argv[5][0] != '-') ? argv[5] : "block_orange/";
     int    num_vias                   = (argc >= 7 && argv[6][0] != '-') ? std::max(0, std::atoi(argv[6])) : 1;
 
-    int max_iter = 60;
+    int max_iter = 1;
     std::vector<int> budgets_ms; // empty => skip anytime
 
     // Parse optional flags

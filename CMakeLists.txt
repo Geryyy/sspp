@@ -94,7 +94,7 @@ link_openmp_if(tsp_standalone)
 add_executable(tsp_benchmark
     #src/main_tsp_benchmark.cpp
     src/main_icra_benchmark.cpp
-    ${SSPP_COMMON_SRCS}
+#    ${SSPP_COMMON_SRCS}
     ${SSPP_COMMON_INCLUDES}
 )
 target_link_libraries(tsp_benchmark
