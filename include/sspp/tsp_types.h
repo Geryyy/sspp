@@ -10,6 +10,8 @@ constexpr int kSplineDegree = 2;
 
 using Point  = Eigen::Matrix<double, kDOF, 1>;
 using Spline = Eigen::Spline<double, kDOF, kSplineDegree>;
+using ViaSet = std::vector<Point>;  // K via points, ordered along the path
+
 
 enum class SolverStatus { Converged, Failed, BelowFloor, MaxIter, Unknown };
 
@@ -21,8 +23,8 @@ struct GradientStep {
 using GradientStepType = GradientStep<kDOF>;
 
 struct PathCandidate {
-    Point via;
-    std::optional<Point> refined;               // (unused in CES-only)
+    ViaSet via;
+    std::optional<ViaSet> refined;               // (unused in CES-only)
     std::vector<GradientStepType> steps;        // (unused in CES-only)
     SolverStatus status{SolverStatus::Failed};
     // cached metrics

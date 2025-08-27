@@ -36,6 +36,19 @@ struct Sampler {
         }
         return pt;
     }
+
+    ViaSet sample_set(const std::vector<Point>& mean_set,
+                      const std::vector<Point>& sigma_set,
+                      double z_min) {
+        const size_t K = mean_set.size();
+        ViaSet vias; vias.reserve(K);
+        for (size_t i=0; i<K; ++i) {
+            Point p = sample(mean_set[i], sigma_set[i]);
+            p[2] = std::max(p[2], z_min);
+            vias.push_back(std::move(p));
+        }
+        return vias;
+    }
 };
 
 } // namespace tsp

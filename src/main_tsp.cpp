@@ -12,7 +12,6 @@
 #include <GLFW/glfw3.h>
 #include <omp.h>
 
-//#include "tsp.h"
 #include "sspp/tsp.h"
 #include "utility.h"
 #include "visu.h"
@@ -70,7 +69,6 @@ run_planning(tsp::TaskSpacePlanner& planner,
              const std::function<std::vector<tsp::PathCandidate>()>& fn,
              Timer& tmr,
              std::vector<double>& ms_hist) {
-    planner.reset();
     tmr.tic();
     auto out = fn();
     const auto us = tmr.toc();
@@ -101,7 +99,7 @@ static void execute_planning_cycle(tsp::TaskSpacePlanner& planner,
 
     sampled_via_pts = planner.get_sampled_via_pts();
 
-    // get_via_pts() returns a const& in the planner; copy into local vector for visu
+    // get_via_pts() returns the current (start + vias + end) sequence
     {
         const auto& init_via = planner.get_via_pts();
         via_pts.assign(init_via.begin(), init_via.end());
@@ -129,8 +127,8 @@ int main(int argc, char** argv) {
         std::cerr << "Usage: " << argv[0] << " <model_file> <collision_body_name>\n";
         return 1;
     }
-    const std::string modelFileArg        = argv[1];
-    const std::string collisionBodyName   = argv[2];
+    const std::string modelFileArg      = argv[1];
+    const std::string collisionBodyName = argv[2];
 
     Timer exec_timer;
     std::vector<double> duration_ms;
@@ -166,18 +164,18 @@ int main(int argc, char** argv) {
     const int    sample_count           = 15;
     const int    check_points           = 40;
     const int    gd_iterations          = 100;
-    const int    init_points            = 3;
+    const int    init_points            = 3;   // total_points if adapter maps -> cfg.total_points
     const double collision_weight       = 1.0;
     const double z_min                  = 0.1;
     const bool   use_gradient_descent   = false; // GD disabled (paper focus on CES)
 
-// Advanced knobs
-    const double sigma_floor        = 0.001;
-    const double var_ema_beta       = 0.2;
-    const double mean_lr            = 0.5;
-    const double max_step_norm      = 0.1;
-    const double floor_margin       = 0.01;
-    const double floor_penalty_scale= 10.0;
+    // Advanced knobs
+    const double sigma_floor         = 0.001;
+    const double var_ema_beta        = 0.2;   // adapter maps to cfg.var_beta
+    const double mean_lr             = 0.5;
+    const double max_step_norm       = 0.1;
+    const double floor_margin        = 0.01;
+    const double floor_penalty_scale = 10.0;
 
     Point limit_max, limit_min;
     limit_max << 0.7,  0.7, 0.6,  1.6;
@@ -234,9 +232,10 @@ int main(int argc, char** argv) {
 
         mjv_updateScene(m, d, &opt, nullptr, &cam, mjCAT_ALL, &scn);
 
-        if (via_pts.size() >= 3) {
-            draw_sphere(&scn, convert_point(via_pts[0]), SPHERE_SIZE, start_color);
-            draw_sphere(&scn, convert_point(via_pts[2]), SPHERE_SIZE, end_color);
+        // Draw start/end from the current via sequence (front/back works for any K)
+        if (!via_pts.empty()) {
+            draw_sphere(&scn, convert_point(via_pts.front()), SPHERE_SIZE, start_color);
+            draw_sphere(&scn, convert_point(via_pts.back()),  SPHERE_SIZE, end_color);
         }
 
         if (vis_best_path) {

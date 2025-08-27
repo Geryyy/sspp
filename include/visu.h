@@ -76,14 +76,11 @@ namespace visu {
         if (!vis_candidates) return;
 
         for (const auto& cand : candidates) {
-            // prefer refined via-point if present
-            const tsp::Point via_pt = cand.refined ? *cand.refined : cand.via;
-
-            // build spline for this via point and draw
-            const tsp::Spline spline = planner.spline_from_via(via_pt);
-            const auto pts  = sample_spline(spline, pts_cnt);
+            const auto& vias = cand.refined ? *cand.refined : cand.via;
+            const tsp::Spline spline = planner.spline_from_vias(vias);
+            const auto pts = sample_spline(spline, pts_cnt);
             draw_path(&scn, convert_point_vector(pts), 0.2f, path_rgba);
-            draw_sphere(&scn, convert_point(via_pt), 0.03f, via_rgba);
+            for (const auto& vp : vias) draw_sphere(&scn, convert_point(vp), 0.03f, via_rgba);
 
             if (vis_grad_desc && !cand.steps.empty()) {
                 // NOTE: in the modular types, GradientStep has fields {x, f}

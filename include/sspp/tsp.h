@@ -35,7 +35,7 @@ namespace tsp {
             PlannerConfig cfg;
             cfg.samples        = sample_count;
             cfg.checks         = check_points;
-            cfg.init_points    = init_points;
+            cfg.total_points    = init_points;
             cfg.w_collision    = collision_weight;
             cfg.elite_fraction = elite_fraction;
             cfg.inc            = stddev_increase_factor;
@@ -62,7 +62,15 @@ namespace tsp {
         // getters expected by your UI/bench
         std::vector<PathCandidate> get_succesful_path_candidates() { return planner_->successes(); }
         std::vector<PathCandidate> get_failed_path_candidates()    { return planner_->failures();  }
-        std::vector<Point> get_sampled_via_pts()                   { return planner_->sampled();   }
+        const std::vector<tsp::ViaSet>& get_sampled_via_sets() const { return planner_->sampled_sets(); }
+        
+        std::vector<tsp::Point> get_sampled_via_pts() const {
+            std::vector<tsp::Point> out;
+            for (const auto& S : planner_->sampled_sets()) {
+                out.push_back(S.empty() ? tsp::Point::Zero() : S.front());
+            }
+            return out;
+        }
 
         const std::vector<Point>& get_via_pts() const              { return planner_->initial_via(); }
 
@@ -85,6 +93,10 @@ namespace tsp {
 
         tsp::Spline spline_from_via(const tsp::Point& via) const {
             return planner_->spline_from_via(via);
+        }
+
+        tsp::Spline spline_from_vias(const ViaSet& vias) const {
+            return planner_->spline_from_vias(vias);
         }
 
 // Back-compat: old code calls reset() before plan(); no-op is fine here
