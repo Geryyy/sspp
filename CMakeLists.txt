@@ -62,19 +62,19 @@ set(SSPP_COMMON_INCLUDES
     include/visu.h
     include/ui.h
     include/utility.h
-    include/Gradient.h
+#    include/Gradient.h
     include/Collision.h
     include/Timer.h
     # modular planner headers (adapter + modules)
-    include/tsp_adapter_task_space_planner.h
-    include/tsp_types.h
-    include/tsp_sampler.h
-    include/tsp_evaluator.h
-    include/tsp_elites.h
-    include/tsp_distribution.h
-    include/tsp_collision_world.h
-    include/tsp_path_model.h
-    include/tsp_planner.h
+#    include/tsp_adapter_task_space_planner.h
+    include/sspp/tsp_types.h
+    include/sspp/tsp_sampler.h
+    include/sspp/tsp_evaluator.h
+    include/sspp/tsp_elites.h
+    include/sspp/tsp_distribution.h
+    include/sspp/tsp_collision_world.h
+    include/sspp/tsp_path_model.h
+    include/sspp/tsp_planner.h
 )
 
 # --- Executables --------------------------------------------------------------
@@ -92,7 +92,8 @@ target_link_libraries(tsp_standalone
 link_openmp_if(tsp_standalone)
 
 add_executable(tsp_benchmark
-    src/main_tsp_benchmark.cpp
+    #src/main_tsp_benchmark.cpp
+    src/main_icra_benchmark.cpp
     ${SSPP_COMMON_SRCS}
     ${SSPP_COMMON_INCLUDES}
 )
