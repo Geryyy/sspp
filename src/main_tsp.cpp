@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
     const double stddev_min             = 0.0001;
     const double stddev_max             = 0.5;
     const double stddev_increase_factor = 1.5;
-    const double stddev_decay_factor    = 0.9;
+    const double stddev_decay_factor    = 0.8;
     const double elite_fraction         = 0.3;
     const int    sample_count           = 15;
     const int    check_points           = 40;
