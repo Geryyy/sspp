@@ -1,0 +1,207 @@
+<mujoco model="unnamed_model">
+  <compiler autolimits="true" angle="radian"/>
+  <option timestep="0.001" gravity="0 0 -9.8100000000000005" integrator="implicitfast"/>
+  <statistic meansize="0.029999999999999999" extent="0.29999999999999999" center="0.29999999999999999 0 0"/>
+  <default>
+    <default class="/"/>
+    <default class="lab/"/>
+    <default class="wall/"/>
+    <default class="block_green/"/>
+    <default class="block_orange/"/>
+    <default class="block_blue/"/>
+    <default class="lego_bricks/"/>
+    <default class="lego_bricks_1/"/>
+    <default class="lego_bricks_2/"/>
+    <default class="gripper_collision_with_block/2f85">
+      <mesh scale="0.001 0.001 0.001"/>
+      <joint axis="1 0 0"/>
+      <geom margin="0.001"/>
+      <general biastype="affine"/>
+      <default class="gripper_collision_with_block/visual2">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" material="gripper_collision_with_block/gray2"/>
+      </default>
+      <default class="gripper_collision_with_block/driver">
+        <joint solreflimit="0.00500 1" solimplimit="0.94999999999999996 0.98999999999999999 0.001" range="0 0.80000000000000004" armature="0.00500" damping="0.100"/>
+      </default>
+      <default class="gripper_collision_with_block/follower">
+        <joint pos="0 -0.017999999999999999 0.0064999999999999997" solreflimit="0.00500 1" solimplimit="0.94999999999999996 0.98999999999999999 0.001" range="-0.872664 0.872664"/>
+      </default>
+      <default class="gripper_collision_with_block/spring_link">
+        <joint stiffness="0.050000000000000003" range="-0.29670597283 0.80000000000000004" springref="2.62" damping="0.00125"/>
+      </default>
+      <default class="gripper_collision_with_block/coupler">
+        <joint solreflimit="0.00500 1" solimplimit="0.94999999999999996 0.98999999999999999 0.001" range="-1.57 0"/>
+      </default>
+      <default class="gripper_collision_with_block/collision2">
+        <geom type="box" condim="3" group="3" rgba="1 0.42352899999999999 0.039215699999999999 1"/>
+        <default class="gripper_collision_with_block/pad_box1">
+          <geom type="box" priority="1" size="0.029999999999999999 0.01 0.02" rgba="0.55000000000000004 0.55000000000000004 0.55000000000000004 1" friction="0.69999999999999996" mass="0" solref="0.00400 1" solimp="0.94999999999999996 0.98999999999999999 0.001" pos="0 -0.0025999999999999999 0.028125000000000001"/>
+        </default>
+        <default class="gripper_collision_with_block/pad_box2">
+          <geom type="box" priority="1" size="0.010999999999999999 0.00400 0.0093749999999999997" rgba="0.450 0.450 0.450 1" friction="0.59999999999999998" mass="0" solref="0.00400 1" solimp="0.94999999999999996 0.98999999999999999 0.001" pos="0 -0.0025999999999999999 0.0093749999999999997"/>
+        </default>
+      </default>
+    </default>
+  </default>
+  <asset>
+    <texture name="lab//unnamed_texture_0" type="skybox" builtin="gradient" rgb1="0.59999999999999998 0.80000000000000004 1" rgb2="0.200 0.200 0.200" width="512" height="3072"/>
+    <texture name="lab/groundplane" type="2d" builtin="checker" rgb1="0.5 0.69999999999999996 0.9" rgb2="0.29999999999999999 0.5 0.69999999999999996" mark="edge" markrgb="0.9 0.9 0.9" width="300" height="300"/>
+    <material name="lab/groundplane" class="lab/" texture="lab/groundplane" texrepeat="5 5" texuniform="true" reflectance="0.4"/>
+    <material name="wall/wood" class="wall/" specular="0.100" shininess="0.200" reflectance="0.050000000000000003" rgba="0.55000000000000004 0.27000000000000002 0.070000000000000007 1"/>
+    <material name="wall/aluminum" class="wall/" specular="0.80000000000000004" shininess="0.9" reflectance="0.59999999999999998" rgba="0.80000000000000004 0.80000000000000004 0.80000000000000004 1"/>
+    <material name="gripper_collision_with_block/black2" class="gripper_collision_with_block/2f85" rgba="0.14899999999999999 0.14899999999999999 0.14899999999999999 1"/>
+    <material name="gripper_collision_with_block/wood2" class="gripper_collision_with_block/2f85" rgba="0.56000000000000005 0.37 0.28999999999999998 1"/>
+    <material name="gripper_collision_with_block/gray2" class="gripper_collision_with_block/2f85" rgba="0.4 0.4 0.4 1"/>
+    <mesh name="gripper_collision_with_block/base_mount" class="gripper_collision_with_block/2f85" file="base_mount-22e57178defe77afb6bdd333bfae16607f1eb3dd.stl"/>
+    <mesh name="gripper_collision_with_block/base" class="gripper_collision_with_block/2f85" file="base-e5dacbcc3971bfdb549ff8c7d38ea873ca7f2933.stl"/>
+    <mesh name="gripper_collision_with_block/driver" class="gripper_collision_with_block/2f85" file="driver-97efa43184c575b31ff1f3980641896f51492762.stl"/>
+    <mesh name="gripper_collision_with_block/coupler" class="gripper_collision_with_block/2f85" file="coupler-0a4240dc94992944cca6ec9e270ff1658fa86c55.stl"/>
+    <mesh name="gripper_collision_with_block/follower" class="gripper_collision_with_block/2f85" file="follower-39e4b8048f1395ee38cb45b37b5fec0e6f2aaec9.stl"/>
+    <mesh name="gripper_collision_with_block/pad" class="gripper_collision_with_block/2f85" file="pad-e6a633b2c81740b1f783ec4c6e695c8cc570f09d.stl"/>
+    <mesh name="gripper_collision_with_block/silicone_pad" class="gripper_collision_with_block/2f85" file="silicone_pad-c284384f3ca6dcdc24d6188a5d1a2d4c42c412ac.stl"/>
+    <mesh name="gripper_collision_with_block/spring_link" class="gripper_collision_with_block/2f85" file="spring_link-8f50234325193b84e9f86b7a63a24560a389c9bf.stl"/>
+  </asset>
+  <worldbody>
+    <body name="ground" mocap="false" pos="0 0 0">
+      <site name="ground_site_attach" class="/"/>
+    </body>
+    <body name="lab/">
+      <light name="lab//unnamed_light_0" class="lab/" directional="true" pos="0 0 1.5" dir="0 0 -1"/>
+      <geom name="lab/floor" class="lab/" type="plane" size="0 0 0.050000000000000003" material="lab/groundplane"/>
+      <site name="lab/ground_attach" class="lab/" group="0" rgba="1 0 0 1" size="0.01" pos="0 0 0"/>
+      </body>
+    <body name="wall1" mocap="false" pos="0.5 0 0" quat="0.707 0 0 0.707">
+      <site name="wall1_site_attach" class="/"/>
+      <body name="wall/">
+        <body name="wall/Wall" pos="0 0 0">
+          <geom name="wall/table_geom" class="wall/" type="box" condim="3" size="0.5 0.29999999999999999 0.058000000000000003" material="wall/wood" pos="0 0 0.058000000000000003"/>
+        </body>
+      </body>
+    </body>
+    <body pos="0.5 0.15 0.116" quat="0.707 0 0 0.707" name="block_green/">
+      <freejoint name="block_green/"/>
+      <body name="block_green/block_green" pos="0 0 0.02">
+        <geom name="block_green/block_green_geom" class="block_green/" type="box" contype="2" conaffinity="1" condim="3" size="0.0400 0.02 0.02" rgba="0 1 0 0.5"/>
+        <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+      </body>
+    </body>
+    <body pos="0.5 -0.05 0.116" quat="0.707 0 0 0.707" name="block_orange/">
+      <freejoint name="block_orange/"/>
+      <body name="block_orange/block_orange" pos="0 0 0.02">
+        <geom name="block_orange/block_orange_geom" class="block_orange/" type="box" contype="2" conaffinity="1" condim="3" size="0.0400 0.02 0.02" rgba="1 0.5 0 0.5"/>
+        <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+      </body>
+    </body>
+    <body pos="0.5 0.15 0.116" quat="0.707 0 0 0.707" name="block_blue/">
+      <freejoint name="block_blue/"/>
+      <body name="block_blue/block_blue" pos="0 0 0.02">
+        <geom name="block_blue/block_blue_geom" class="block_blue/" type="box" contype="2" conaffinity="1" condim="3" size="0.0400 0.02 0.02" rgba="0 0 1 0.5"/>
+        <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+      </body>
+    </body>
+    <body name="blockwall1" mocap="false" pos="0.5 0.050000000000000003 0.116">
+      <site name="blockwall1_site_attach" class="/"/>
+      <body name="lego_bricks/">
+        <body name="lego_bricks/block_cyan" pos="0 0 0.02">
+          <geom name="lego_bricks/block_cyan_geom" class="lego_bricks/" type="box" condim="1" size="0.0400 0.02 0.02" rgba="0 1 1 0.5"/>
+          <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+        </body>
+      </body>
+    </body>
+    <body name="blockwall2" mocap="false" pos="0.5 0.050000000000000003 0.156">
+      <site name="blockwall2_site_attach" class="/"/>
+      <body name="lego_bricks_1/">
+        <body name="lego_bricks_1/block_magenta" pos="0 0 0.02">
+          <geom name="lego_bricks_1/block_magenta_geom" class="lego_bricks_1/" type="box" condim="1" size="0.0400 0.02 0.02" rgba="1 0 1 0.5"/>
+          <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+        </body>
+      </body>
+    </body>
+    <body name="blockwall3" mocap="false" pos="0.5 0.050000000000000003 0.196">
+      <site name="blockwall3_site_attach" class="/"/>
+      <body name="lego_bricks_2/">
+        <body name="lego_bricks_2/block_yellow" pos="0 0 0.02">
+          <geom name="lego_bricks_2/block_yellow_geom" class="lego_bricks_2/" type="box" contype="4" conaffinity="4" condim="1" size="0.0400 0.02 0.02" rgba="1 1 0 0.5"/>
+          <geom name="lego_bricks_2/block_yellow_collision" class="lego_bricks_2/" type="box" contype="4" conaffinity="4" condim="1" group="2" size="0.050000000000000003 0.0250 0.029999999999999999" rgba="1 0 0 0.100" pos="0 0 0.01"/>
+          <inertial pos="0 0 0" mass="0.200" diaginertia="0.000230 9.2e-05 0.000230"/>
+        </body>
+      </body>
+    </body>
+    <body pos="2 2.2000000000000002 0.5" name="gripper_collision_with_block/">
+      <freejoint name="gripper_collision_with_block/"/>
+      <body name="gripper_collision_with_block/base_mount" childclass="gripper_collision_with_block/2f85" pos="0 0 0.14499999999999999" quat="0 1 0 0">
+        <inertial pos="0 0 0" quat="1 0 0 0" mass="0.0001" diaginertia="9.9999999999999995e-07 9.9999999999999995e-07 9.9999999999999995e-07"/>
+        <geom name="gripper_collision_with_block//unnamed_geom_0" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/base_mount"/>
+        <geom name="gripper_collision_with_block/col_mount" type="cylinder" contype="1" conaffinity="1" group="3" size="0.0400 0.022499999999999999" rgba="1 0.42352899999999999 0.039215699999999999 1" pos="0 0 0.016"/>
+        <body name="gripper_collision_with_block/base" pos="0 0 0.0038">
+          <body name="gripper_collision_with_block/gripping_point" pos="0 0 0.13">
+            <site name="gripper_collision_with_block/gripping_point" pos="0 0 0"/>
+            <geom name="gripper_collision_with_block/gripper_collision" type="box" contype="4" conaffinity="1" condim="1" group="1" size="0.044999999999999998 0.02 0.02" rgba="0 1 0 0.29999999999999999" pos="0 0 0.01"/>
+          </body>
+          <inertial pos="0 -2.7039400000000001e-05 0.035467499999999999" quat="1 -0.00152849 0 0" mass="0.77744100000000005" diaginertia="0.00026028500000000002 0.000225381 0.00015270799999999999"/>
+          <geom name="gripper_collision_with_block//unnamed_geom_3" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/base"/>
+          <geom name="gripper_collision_with_block/col_base" type="box" contype="1" conaffinity="1" group="3" size="0.0125 0.029999999999999999 0.050000000000000003" rgba="1 0.42352899999999999 0.039215699999999999 1" pos="0 0 0.037999999999999999"/>
+          <site name="gripper_collision_with_block/pinch" type="sphere" group="8" material="gripper_collision_with_block/wood2" size="0.00500" pos="0 0 0.14499999999999999"/>
+          <body name="gripper_collision_with_block/right_driver" pos="0 0.030601099999999999 0.054904000000000001">
+            <inertial pos="2.96931e-12 0.017754700000000002 0.00107314" quat="0.68130100000000005 0.73200299999999996 0 0" mass="0.0089956299999999993" diaginertia="1.72352e-06 1.6090599999999999e-06 3.22006e-07"/>
+            <geom name="gripper_collision_with_block//unnamed_geom_5" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/gray2" mesh="gripper_collision_with_block/driver"/>
+            <body name="gripper_collision_with_block/right_coupler" pos="0 0.0315 -0.0041000000000000003">
+              <inertial pos="0 0.0030120899999999998 0.023217499999999999" quat="0.70563600000000004 -0.045590400000000003 0.045590400000000003 0.70563600000000004" mass="0.0140974" diaginertia="4.1620600000000001e-06 3.5221600000000001e-06 8.8813100000000003e-07"/>
+              <geom name="gripper_collision_with_block//unnamed_geom_6" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/coupler"/>
+              <geom name="gripper_collision_with_block/col_right_coupler" type="box" contype="1" conaffinity="1" group="3" size="0.0051392800000000004 0.012750900000000001 0.026890899999999999" rgba="1 0 0 1" pos="0 0.0030120899999999998 0.023217499999999999" quat="0.70563600000000004 -0.045590400000000003 0.045590400000000003 0.70563600000000004"/>
+            </body>
+          </body>
+          <body name="gripper_collision_with_block/right_spring_link" pos="0 0.0132 0.060900000000000003">
+            <inertial pos="-8.6500500000000008e-09 0.018162399999999999 0.021265800000000001" quat="0.66340299999999996 -0.24473700000000001 0.24473700000000001 0.66340299999999996" mass="0.022164199999999998" diaginertia="8.9685299999999993e-06 6.7173299999999996e-06 2.6393100000000001e-06"/>
+            <geom name="gripper_collision_with_block//unnamed_geom_8" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/spring_link"/>
+            <body name="gripper_collision_with_block/right_follower" pos="0 0.055 0.037499999999999999">
+              <inertial pos="0 -0.011046 0.012478599999999999" quat="1 0.16639999999999999 0 0" mass="0.012522200000000001" diaginertia="2.6741500000000001e-06 2.4559000000000001e-06 6.0203100000000003e-07"/>
+              <geom name="gripper_collision_with_block//unnamed_geom_9" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/follower"/>
+              <body name="gripper_collision_with_block/right_pad" pos="0 -0.0189 0.013520000000000001">
+                <geom name="gripper_collision_with_block/right_pad1" class="gripper_collision_with_block/pad_box1" contype="1" conaffinity="1" margin="0.100" pos="0 -0.02 0"/>
+                <inertial pos="0 -0.00250 0.018499999999999999" quat="0.70710700000000004 0 0 0.70710700000000004" mass="0.00350" diaginertia="4.7395799999999999e-07 3.6458299999999998e-07 1.23958e-07"/>
+                <geom name="gripper_collision_with_block//unnamed_geom_11" class="gripper_collision_with_block/visual2" mesh="gripper_collision_with_block/pad"/>
+                <body name="gripper_collision_with_block/right_silicone_pad">
+                  <geom name="gripper_collision_with_block//unnamed_geom_12" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/silicone_pad"/>
+                </body>
+              </body>
+            </body>
+          </body>
+          <body name="gripper_collision_with_block/left_driver" pos="0 -0.030601099999999999 0.054904000000000001" quat="0 0 0 1">
+            <inertial pos="0 0.017754700000000002 0.00107314" quat="0.68130100000000005 0.73200299999999996 0 0" mass="0.0089956299999999993" diaginertia="1.72352e-06 1.6090599999999999e-06 3.22006e-07"/>
+            <geom name="gripper_collision_with_block//unnamed_geom_13" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/gray2" mesh="gripper_collision_with_block/driver"/>
+            <body name="gripper_collision_with_block/left_coupler" pos="0 0.0315 -0.0041000000000000003">
+              <inertial pos="0 0.0030120899999999998 0.023217499999999999" quat="0.70563600000000004 -0.045590400000000003 0.045590400000000003 0.70563600000000004" mass="0.0140974" diaginertia="4.1620600000000001e-06 3.5221600000000001e-06 8.8813100000000003e-07"/>
+              <geom name="gripper_collision_with_block//unnamed_geom_14" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/coupler"/>
+              <geom name="gripper_collision_with_block/col_left_coupler" type="box" contype="1" conaffinity="1" group="3" size="0.0051392800000000004 0.012750900000000001 0.026890899999999999" rgba="1 0 0 1" pos="0 0.0030120899999999998 0.023217499999999999" quat="0.70563600000000004 -0.045590400000000003 0.045590400000000003 0.70563600000000004"/>
+            </body>
+          </body>
+          <body name="gripper_collision_with_block/left_spring_link" pos="0 -0.0132 0.060900000000000003" quat="0 0 0 1">
+            <inertial pos="-8.6500500000000008e-09 0.018162399999999999 0.021265800000000001" quat="0.66340299999999996 -0.24473700000000001 0.24473700000000001 0.66340299999999996" mass="0.022164199999999998" diaginertia="8.9685299999999993e-06 6.7173299999999996e-06 2.6393100000000001e-06"/>
+            <geom name="gripper_collision_with_block//unnamed_geom_16" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/spring_link"/>
+            <body name="gripper_collision_with_block/left_follower" pos="0 0.055 0.037499999999999999">
+              <inertial pos="0 -0.011046 0.012478599999999999" quat="1 0.16639999999999999 0 0" mass="0.012522200000000001" diaginertia="2.6741500000000001e-06 2.4559000000000001e-06 6.0203100000000003e-07"/>
+              <geom name="gripper_collision_with_block//unnamed_geom_17" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/follower"/>
+              <body name="gripper_collision_with_block/left_pad" pos="0 -0.0189 0.013520000000000001">
+                <geom name="gripper_collision_with_block/left_pad1" class="gripper_collision_with_block/pad_box1" contype="1" conaffinity="1" pos="0 -0.02 0"/>
+                <inertial pos="0 -0.00250 0.018499999999999999" quat="1 0 0 1" mass="0.00350" diaginertia="4.7395799999999999e-07 3.6458299999999998e-07 1.23958e-07"/>
+                <geom name="gripper_collision_with_block//unnamed_geom_19" class="gripper_collision_with_block/visual2" mesh="gripper_collision_with_block/pad"/>
+                <body name="gripper_collision_with_block/left_silicone_pad">
+                  <geom name="gripper_collision_with_block//unnamed_geom_20" class="gripper_collision_with_block/visual2" material="gripper_collision_with_block/black2" mesh="gripper_collision_with_block/silicone_pad"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <contact>
+    <exclude name="gripper_collision_with_block//unnamed_contact_0" body1="gripper_collision_with_block/base" body2="gripper_collision_with_block/left_driver"/>
+    <exclude name="gripper_collision_with_block//unnamed_contact_1" body1="gripper_collision_with_block/base" body2="gripper_collision_with_block/right_driver"/>
+    <exclude name="gripper_collision_with_block//unnamed_contact_2" body1="gripper_collision_with_block/base" body2="gripper_collision_with_block/left_spring_link"/>
+    <exclude name="gripper_collision_with_block//unnamed_contact_3" body1="gripper_collision_with_block/base" body2="gripper_collision_with_block/right_spring_link"/>
+    <exclude name="gripper_collision_with_block//unnamed_contact_4" body1="gripper_collision_with_block/right_coupler" body2="gripper_collision_with_block/right_follower"/>
+    <exclude name="gripper_collision_with_block//unnamed_contact_5" body1="gripper_collision_with_block/left_coupler" body2="gripper_collision_with_block/left_follower"/>
+  </contact>
+</mujoco>

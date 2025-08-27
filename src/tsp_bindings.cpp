@@ -95,7 +95,7 @@ PYBIND11_MODULE(_tsp, m) {
             .def("get_gradient_descent_steps", &GradientDescentType::get_gradient_descent_steps,
                  "Get all gradient descent steps taken during optimization");
 
-    // Main TaskSpacePlanner class with all constructor parameters
+    // Main TaskSpacePlanner class with updated constructor parameters
     py::class_<TaskSpacePlanner>(m, "TaskSpacePlanner")
             .def(py::init([](const std::string &xml_string,
                              const std::string &body_name,
@@ -111,14 +111,15 @@ PYBIND11_MODULE(_tsp, m) {
                              int init_points,
                              double collision_weight,
                              double z_min,
-                             const Point &limits,
+                             const Point &limits_min,
+                             const Point &limits_max,
                              bool enable_gradient_descent) {
                      return new TaskSpacePlanner(xml_string, body_name,
                                                  stddev_initial, stddev_min, stddev_max,
                                                  stddev_increase_factor, stddev_decay_factor,
                                                  elite_fraction, sample_count, check_points,
                                                  gd_iterations, init_points, collision_weight,
-                                                 z_min, limits, enable_gradient_descent);
+                                                 z_min, limits_min, limits_max, enable_gradient_descent);
                  }),
                  py::arg("xml_string"),
                  py::arg("body_name"),
@@ -134,7 +135,8 @@ PYBIND11_MODULE(_tsp, m) {
                  py::arg("init_points") = 3,
                  py::arg("collision_weight") = 1.0,
                  py::arg("z_min") = 0.0,
-                 py::arg("limits") = Point::Ones() * 2.0,
+                 py::arg("limits_min") = -Point::Ones() * 2.0,
+                 py::arg("limits_max") = Point::Ones() * 2.0,
                  py::arg("enable_gradient_descent") = true,
                  R"pbdoc(
         Initialize TaskSpacePlanner with evolutionary path planning.
@@ -152,7 +154,8 @@ PYBIND11_MODULE(_tsp, m) {
         - init_points: Number of initial spline control points
         - collision_weight: Weight of collision cost vs arc length
         - z_min: Minimum z-coordinate (ground level)
-        - limits: Sampling bounds for each dimension [x,y,z,rot]
+        - limits_min: Minimum sampling bounds for each dimension [x,y,z,rot]
+        - limits_max: Maximum sampling bounds for each dimension [x,y,z,rot]
         - enable_gradient_descent: Enable/disable gradient refinement
         )pbdoc")
 
@@ -191,8 +194,10 @@ PYBIND11_MODULE(_tsp, m) {
                  "Get current sampling distribution mean")
             .def("get_current_stddev", &TaskSpacePlanner::get_current_stddev,
                  "Get current sampling distribution standard deviation")
-            .def("get_limits", &TaskSpacePlanner::get_limits,
-                 "Get current sampling limits")
+            .def("get_limits_min", &TaskSpacePlanner::get_limits_min,
+                 "Get minimum sampling limits for each dimension")
+            .def("get_limits_max", &TaskSpacePlanner::get_limits_max,
+                 "Get maximum sampling limits for each dimension")
 
                     // Spline inspection methods
             .def("get_via_pts", &TaskSpacePlanner::get_via_pts,

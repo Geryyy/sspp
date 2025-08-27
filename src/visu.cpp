@@ -4,7 +4,7 @@
 #include <Eigen/Dense>
 #include <mujoco/mujoco.h>
 #include "visu.h"
-#include "tsp.h"
+//#include "tsp.h"
 
 namespace visu {
     void draw_sphere(mjvScene *scn, Point3 pos, float size, float *rgba) {

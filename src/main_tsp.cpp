@@ -1,214 +1,220 @@
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <string>
 #include <vector>
-#include <numeric>
-#include <cmath>
-#include <algorithm>
-#include <thread>
-#include <cstdio>
-#include <cstring>
 
 #include <mujoco/mujoco.h>
 #include <Eigen/Core>
 #include <GLFW/glfw3.h>
 #include <omp.h>
 
-#include "Timer.h"
-#include "tsp.h"
+#include "sspp/tsp.h"
 #include "utility.h"
 #include "visu.h"
 #include "ui.h"
+#include "Timer.h"
 
 using namespace visu;
 using namespace Utility;
 using Point = tsp::Point;
 
-// Path to the XML file for the MuJoCo model
-// "/home/geraldebmer/repos/robocrane/mujoco_env_builder/presets/robocrane/robocrane.xml" "block_cyan"
-const std::string modelFile = "/home/geraldebmer/repos/robocrane/sspp/mjcf/stacking.xml";
-
-// MuJoCo data structures
+// MuJoCo globals
 mjModel* m = nullptr;
-mjData* d = nullptr;
-mjvCamera cam;
-mjvOption opt;
-mjvScene scn;
-mjrContext con;
+mjData*  d = nullptr;
+mjvCamera cam; mjvOption opt; mjvScene scn; mjrContext con;
 
-std::vector<tsp::PathCandidate> path_candidates;
-std::vector<tsp::PathCandidate> failed_candidates;
-std::vector<tsp::Point> via_pts, sampled_via_pts;
+constexpr float SPHERE_SIZE = 0.01f;
+constexpr float PATH_WIDTH  = 0.2f;
 
-// Planning state tracking
+// Runtime state for visualization
+std::vector<tsp::PathCandidate> path_candidates, failed_candidates;
+std::vector<Point> via_pts, sampled_via_pts;
+
 bool first_plan_call = true;
 
-// Function to print planning statistics
-void report_planning_statistics(const std::vector<double>& duration_vec,
-                                const std::vector<tsp::PathCandidate>& successful_candidates,
-                                const std::vector<tsp::PathCandidate>& failed_candidates,
-                                const tsp::TaskSpacePlanner& path_planner,
-                                const std::string& attempt_name) {
-    std::cout << "-- " << attempt_name << " --" << std::endl;
-    if (!duration_vec.empty()) {
-        double mean = std::accumulate(duration_vec.begin(), duration_vec.end(), 0.0) / duration_vec.size();
-        double sq_sum = std::inner_product(duration_vec.begin(), duration_vec.end(), duration_vec.begin(), 0.0);
-        double stdev = std::sqrt(sq_sum / duration_vec.size() - mean * mean);
-        auto [min_it, max_it] = std::minmax_element(duration_vec.begin(), duration_vec.end());
-        double min_val = (min_it != duration_vec.end()) ? *min_it : 0.0;
-        double max_val = (max_it != duration_vec.end()) ? *max_it : 0.0;
+// ---------- Helpers ----------
 
-        std::cout << "Mean planning time: " << mean << " ms" << std::endl;
-        std::cout << "Standard Deviation: " << stdev << " ms" << std::endl;
-        std::cout << "Min planning time: " << min_val << " ms" << std::endl;
-        std::cout << "Max planning time: " << max_val << " ms" << std::endl;
+static void report_planning_statistics(const std::vector<double>& ms,
+                                       const std::vector<tsp::PathCandidate>& ok,
+                                       const std::vector<tsp::PathCandidate>& fail,
+                                       const tsp::TaskSpacePlanner& planner,
+                                       const std::string& tag) {
+    std::cout << "-- " << tag << " --\n";
+    if (!ms.empty()) {
+        const double mean = std::accumulate(ms.begin(), ms.end(), 0.0) / ms.size();
+        const double sq   = std::inner_product(ms.begin(), ms.end(), ms.begin(), 0.0);
+        const double sd   = std::sqrt(std::max(0.0, sq / ms.size() - mean * mean));
+        const auto [mn, mx] = std::minmax_element(ms.begin(), ms.end());
+        std::cout << "Mean planning time: " << mean << " ms\n"
+                  << "Std. deviation   : " << sd   << " ms\n"
+                  << "Min / Max        : " << *mn  << " / " << *mx << " ms\n";
     } else {
-        std::cout << "No planning attempts recorded for " << attempt_name << "." << std::endl;
+        std::cout << "No planning attempts recorded.\n";
     }
-    std::cout << "Number of successful path candidates: " << successful_candidates.size() << std::endl;
-    std::cout << "Number of failed path candidates: " << failed_candidates.size() << std::endl;
+    std::cout << "Successful candidates: " << ok.size()   << "\n"
+              << "Failed candidates    : " << fail.size() << "\n";
 
-    // Print current distribution state
-    Point current_mean = path_planner.get_current_mean();
-    Point current_stddev = path_planner.get_current_stddev();
-    std::cout << "Current mean: [" << current_mean.transpose() << "]" << std::endl;
-    std::cout << "Current stddev: [" << current_stddev.transpose() << "]" << std::endl;
+    const Point mu  = planner.get_current_mean();
+    const Point sig = planner.get_current_stddev();
+    std::cout << "Mean  : [" << mu.transpose()  << "]\n"
+              << "Stddev: [" << sig.transpose() << "]\n";
 }
 
-// Function to run a planning attempt
-std::vector<tsp::PathCandidate> run_planning(tsp::TaskSpacePlanner& path_planner,
-                                             const std::function<std::vector<tsp::PathCandidate>(void)>& plan_function,
-                                             Timer& exec_timer,
-                                             std::vector<double>& duration_vec) {
-    path_planner.reset();
-    exec_timer.tic();
-    std::vector<tsp::PathCandidate> candidates = plan_function();
-    auto duration = exec_timer.toc();
-    duration_vec.push_back(static_cast<double>(duration / 1e6));
-    return candidates;
+static std::vector<tsp::PathCandidate>
+run_planning(tsp::TaskSpacePlanner& planner,
+             const std::function<std::vector<tsp::PathCandidate>()>& fn,
+             Timer& tmr,
+             std::vector<double>& ms_hist) {
+    tmr.tic();
+    auto out = fn();
+    const auto us = tmr.toc();
+    ms_hist.push_back(double(us) / 1e6);
+    return out;
 }
 
-void execute_planning_cycle(tsp::TaskSpacePlanner& path_planner,
-                            const Point& start_pt,
-                            const Point& end_pt,
-                            const Utility::BodyJointInfo& coll_body_info,
-                            Timer& exec_timer,
-                            std::vector<double>& duration_vec,
-                            const std::string& report_name = "Planning attempt") {
+static void execute_planning_cycle(tsp::TaskSpacePlanner& planner,
+                                   const Point& start_pt,
+                                   const Point& end_pt,
+                                   const Utility::BodyJointInfo& coll_body_info,
+                                   Timer& exec_timer,
+                                   std::vector<double>& ms_hist,
+                                   const std::string& report_name = "Planning attempt") {
+    const bool iterate_flag = !first_plan_call;
 
-    // Use iterative flag for subsequent calls
-    bool iterate_flag = !first_plan_call;
+    path_candidates = run_planning(planner, [&]{
+        return planner.plan(start_pt, end_pt, iterate_flag);
+    }, exec_timer, ms_hist);
 
-    path_candidates = run_planning(path_planner, [&]() {
-        return path_planner.plan(start_pt, end_pt, iterate_flag);
-    }, exec_timer, duration_vec);
+    first_plan_call = false;
 
-    if (first_plan_call) {
-        first_plan_call = false;
-    }
+    failed_candidates = planner.get_failed_path_candidates();
+    report_planning_statistics(ms_hist, path_candidates, failed_candidates, planner, report_name);
 
-    failed_candidates = path_planner.get_failed_path_candidates();
-    report_planning_statistics(duration_vec, path_candidates, failed_candidates, path_planner, report_name);
-
-    auto ctrl_pts = path_planner.get_ctrl_pts();
+    auto ctrl_pts = planner.get_ctrl_pts();
     std::cout << "Spline control points:\n" << ctrl_pts << std::endl;
 
-    sampled_via_pts = path_planner.get_sampled_via_pts();
-    via_pts = path_planner.get_via_pts();
+    sampled_via_pts = planner.get_sampled_via_pts();
 
-    // TEST purpose: Set end point in MuJoCo
+    // get_via_pts() returns the current (start + vias + end) sequence
+    {
+        const auto& init_via = planner.get_via_pts();
+        via_pts.assign(init_via.begin(), init_via.end());
+    }
+
+    // For testing: set end point on the body in MuJoCo
     Utility::mj_set_point(end_pt, coll_body_info, d);
 }
 
+// ---------- Main ----------
+
 int main(int argc, char** argv) {
+    // OpenMP environment dump
+#ifdef _OPENMP
+    std::cout << "[OMP] OpenMP enabled\n"
+              << "[OMP] Max threads    : " << omp_get_max_threads() << "\n"
+              << "[OMP] Num processors : " << omp_get_num_procs()   << "\n"
+              << "[OMP] Dynamic threads: " << omp_get_dynamic()     << "\n"
+              << "[OMP] Nested parallel: " << omp_get_nested()      << "\n";
+#else
+    std::cout << "[OMP] OpenMP not enabled (compiled without -fopenmp)\n";
+#endif
+
     if (argc < 3) {
-        std::cerr << "Usage: " << argv[0] << " <model_file> <collision_body_name>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <model_file> <collision_body_name>\n";
         return 1;
     }
-    const std::string modelFileArg = argv[1];
-    const std::string collisionBodyNameArg = argv[2];
+    const std::string modelFileArg      = argv[1];
+    const std::string collisionBodyName = argv[2];
 
     Timer exec_timer;
-    std::vector<double> duration_vec_first;
-    std::vector<double> duration_vec_second;
+    std::vector<double> duration_ms;
 
-    // Initialize MuJoCo
-    std::cout << "MuJoCo version: " << mj_version() << std::endl;
-    std::cout << "Eigen version: " << EIGEN_WORLD_VERSION << "."
+    // MuJoCo init
+    std::cout << "MuJoCo version: " << mj_version() << "\n"
+              << "Eigen version : " << EIGEN_WORLD_VERSION << "."
               << EIGEN_MAJOR_VERSION << "."
-              << EIGEN_MINOR_VERSION << std::endl;
+              << EIGEN_MINOR_VERSION << "\n";
 
-    char error_buffer_[1000];
-    m = mj_loadXML(modelFileArg.c_str(), nullptr, error_buffer_, sizeof(error_buffer_));
-    if (!m) {
-        throw std::runtime_error("Failed to load MuJoCo model from XML: " + std::string(error_buffer_));
-    }
+    char errbuf[1000];
+    m = mj_loadXML(modelFileArg.c_str(), nullptr, errbuf, sizeof(errbuf));
+    if (!m) throw std::runtime_error(std::string("Failed to load MuJoCo model: ") + errbuf);
     d = mj_makeData(m);
 
     Utility::print_body_info(m);
-
-    std::cout << "Taskspace Planner" << std::endl;
-    std::cout << "DoFs: " << m->nq << std::endl;
-
+    std::cout << "Taskspace Planner\nDoFs: " << m->nq << "\n";
     print_menue();
 
     mj_forward(m, d);
     mj_collision(m, d);
 
-    // Setup Task Space Planner with configuration parameters
-    std::string coll_body_name = collisionBodyNameArg;
-    auto coll_body_info = get_free_body_joint_info(coll_body_name, m);
+    // Planner configuration
+    const std::string coll_body_name = collisionBodyName;
+    const auto coll_body_info = get_free_body_joint_info(coll_body_name, m);
 
-    // Configure planner parameters
-    double stddev_initial = 0.3;    // Initial sampling spread
-    double stddev_min = 0.01;       // Minimum stddev (convergence limit)
-    double stddev_max = 2.0;        // Maximum stddev (exploration limit)
-    double stddev_increase_factor = 1.5;  // Increase factor when no success
-    double stddev_decay_factor = 0.95;    // Decay factor when successful
-    double elite_fraction = 0.3;    // Top 30% candidates used for distribution update
-    int sample_count = 20;          // Number of via point candidates per iteration
-    int check_points = 50;          // Points checked along spline for collision
-    int gd_iterations = 5;         // Gradient descent iterations
-    int init_points = 3;            // Number of initial via points
-    double collision_weight = 1.0;  // Weight for collision cost in path evaluation
-    double z_min = 0.0;             // Minimum z-coordinate (ground level)
+    const double stddev_initial         = 0.2;
+    const double stddev_min             = 0.0001;
+    const double stddev_max             = 0.5;
+    const double stddev_increase_factor = 1.5;
+    const double stddev_decay_factor    = 0.9;
+    const double elite_fraction         = 0.3;
+    const int    sample_count           = 15;
+    const int    check_points           = 40;
+    const int    gd_iterations          = 100;
+    const int    init_points            = 3;   // total_points if adapter maps -> cfg.total_points
+    const double collision_weight       = 1.0;
+    const double z_min                  = 0.1;
+    const bool   use_gradient_descent   = false; // GD disabled (paper focus on CES)
 
-    tsp::TaskSpacePlanner path_planner(m, coll_body_name,
-                                       stddev_initial, stddev_min, stddev_max,
-                                       stddev_increase_factor, stddev_decay_factor,
-                                       elite_fraction, sample_count, check_points,
-                                       gd_iterations, init_points, collision_weight, z_min);
+    // Advanced knobs
+    const double sigma_floor         = 0.001;
+    const double var_ema_beta        = 0.2;   // adapter maps to cfg.var_beta
+    const double mean_lr             = 0.5;
+    const double max_step_norm       = 0.1;
+    const double floor_margin        = 0.01;
+    const double floor_penalty_scale = 10.0;
 
-    Point end_pt = Utility::get_body_point<Point>(m, d, coll_body_name);
-    end_pt[2] += 0.1;
-    Point start_pt;
-    start_pt << -0.5, 0.7, 0.1, 1.5708;
+    Point limit_max, limit_min;
+    limit_max << 0.7,  0.7, 0.6,  1.6;
+    limit_min << 0.0, -0.7, 0.1, -1.6;
 
-    // Initial Planning Attempt
-    execute_planning_cycle(path_planner, start_pt, end_pt,
-                           coll_body_info, exec_timer, duration_vec_second,
-                           "Initial planning (new path)");
+    tsp::TaskSpacePlanner path_planner(
+            m, coll_body_name,
+            stddev_initial, stddev_min, stddev_max,
+            stddev_increase_factor, stddev_decay_factor,
+            elite_fraction, sample_count, check_points,
+            gd_iterations, init_points, collision_weight, z_min,
+            limit_min, limit_max, use_gradient_descent,
+            sigma_floor, var_ema_beta, mean_lr, max_step_norm,
+            floor_margin, floor_penalty_scale
+    );
 
-    // Initialize GLFW
-    if (!glfwInit()) {
-        mju_error("Could not initialize GLFW");
-    }
+    // Start/end points
+    const std::string start_body_name = "block_green/";
+    const std::string end_body_name   = "block_orange/";
+    Point end_pt   = Utility::get_body_point<Point>(m, d, end_body_name);
+    Point start_pt = Utility::get_body_point<Point>(m, d, start_body_name);
+    end_pt[2]   += 0.02;
+    start_pt[2] += 0.02;
 
-    // Create window and OpenGL context
+    // Initial plan
+    execute_planning_cycle(path_planner, start_pt, end_pt, coll_body_info, exec_timer, duration_ms, "Initial planning (new path)");
+
+    // GLFW init
+    if (!glfwInit()) mju_error("Could not initialize GLFW");
     GLFWwindow* window = glfwCreateWindow(1200, 900, "Get to the Choppa!", nullptr, nullptr);
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);
 
-    // Initialize visualization data structures
-    mjv_defaultCamera(&cam);
-    mjv_defaultOption(&opt);
-    mjv_defaultScene(&scn);
-    mjr_defaultContext(&con);
-
-    // Create scene and context
+    // Visualization setup
+    mjv_defaultCamera(&cam); mjv_defaultOption(&opt); mjv_defaultScene(&scn); mjr_defaultContext(&con);
     mjv_makeScene(m, &scn, 4000);
     mjr_makeContext(m, &con, mjFONTSCALE_150);
 
-    // Install GLFW callbacks
+    // Callbacks
     glfwSetKeyCallback(window, keyboard_cb);
     glfwSetCursorPosCallback(window, mouse_move_cb);
     glfwSetMouseButtonCallback(window, mouse_button_cb);
@@ -221,63 +227,51 @@ int main(int argc, char** argv) {
         mj_forward(m, d);
         d->time += 1e-2;
 
-        // Get framebuffer viewport
-        mjrRect viewport = {0, 0, 0, 0};
+        mjrRect viewport{0, 0, 0, 0};
         glfwGetFramebufferSize(window, &viewport.width, &viewport.height);
 
-        // Update scene and render
         mjv_updateScene(m, d, &opt, nullptr, &cam, mjCAT_ALL, &scn);
 
-        draw_sphere(&scn, convert_point(via_pts[0]), 0.03, start_color);
-        draw_sphere(&scn, convert_point(via_pts[2]), 0.03, end_color);
+        // Draw start/end from the current via sequence (front/back works for any K)
+        if (!via_pts.empty()) {
+            draw_sphere(&scn, convert_point(via_pts.front()), SPHERE_SIZE, start_color);
+            draw_sphere(&scn, convert_point(via_pts.back()),  SPHERE_SIZE, end_color);
+        }
 
         if (vis_best_path) {
             auto pts = path_planner.get_path_pts(pts_cnt);
-            draw_path(&scn, convert_point_vector(pts), 0.2, path_color);
+            draw_path(&scn, convert_point_vector(pts), PATH_WIDTH, path_color);
         }
 
-        // Visualize sampled via points
-        visualize_via_pts(vis_sampled_via_pts, sampled_via_pts, path_planner, scn, pts_cnt, sampled_via_path_color, sampled_via_color);
+        visualize_via_pts(vis_sampled_via_pts, sampled_via_pts, path_planner, scn, pts_cnt,
+                          sampled_via_path_color, sampled_via_color);
 
-        // Draw path candidates
-        visualize_candidates(vis_succ_candidates, vis_grad_descent,
-                             path_candidates, path_planner, scn, pts_cnt, path_color, via_color, graddesc_color, graddesc_via_color);
-        // Draw failed path candidates
-        visualize_candidates(vis_failed_candidates, vis_grad_descent,
-                             failed_candidates, path_planner, scn, pts_cnt, failed_path_color, failed_via_color,
-                             failed_graddesc_color, failed_graddesc_via_color);
+        visualize_candidates(vis_succ_candidates, vis_grad_descent, path_candidates, path_planner, scn, pts_cnt,
+                             path_color, via_color, graddesc_color, graddesc_via_color);
+        visualize_candidates(vis_failed_candidates, vis_grad_descent, failed_candidates, path_planner, scn, pts_cnt,
+                             failed_path_color, failed_via_color, failed_graddesc_color, failed_graddesc_via_color);
 
-        // Animate block
         if (vis_animate_block) {
-            double u = std::fmod(d->time / 10.0, 1.0);
-            Point pt = path_planner.evaluate(u);
-            Utility::mj_set_point(pt, coll_body_info, d);
+            const double u = std::fmod(d->time / 10.0, 1.0);
+            const Point  p = path_planner.evaluate(u);
+            Utility::mj_set_point(p, coll_body_info, d);
         }
 
-        if (flag_plan_path){
-            std::cout << "debug out: iterative planning refinement" << std::endl;
-
-            execute_planning_cycle(path_planner, start_pt, end_pt,
-                                   coll_body_info, exec_timer, duration_vec_second,
-                                   "Iterative refinement");
-
+        if (flag_plan_path) {
+            std::cout << "debug out: iterative planning refinement\n";
+            execute_planning_cycle(path_planner, start_pt, end_pt, coll_body_info, exec_timer, duration_ms, "Iterative refinement");
             flag_plan_path = false;
         }
 
         mjr_render(viewport, &scn, &con);
-
-        // Swap OpenGL buffers and poll events
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
-    // Free visualization storage
+    // Cleanup
     mjv_freeScene(&scn);
     mjr_freeContext(&con);
-
-    // Free MuJoCo model and data
     mj_deleteData(d);
     mj_deleteModel(m);
-
     return 0;
 }
