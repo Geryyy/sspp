@@ -1,4 +1,4 @@
-// main_bench.cpp — compact benchmark for modular C++ TaskSpacePlanner
+// main_bench.cpp — compact benchmark for modular C++ TaskSpacePlanner (with iteration reporting)
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -15,7 +15,7 @@
 #include "utility.h"
 
 using Point = tsp::Point;
-using Clock = std::chrono::high_resolution_clock;
+using Clock = std::chrono::steady_clock; // monotonic for timing
 
 // ---------- small utils ----------
 struct Stats { double mean_ms{0}, std_ms{0}, min_ms{0}, max_ms{0}; };
@@ -32,32 +32,89 @@ static double path_len_xyz(const tsp::TaskSpacePlanner& p, int samples=60){
     const auto pts = p.get_path_pts(samples); if(pts.size()<2) return 0.0;
     double L=0; for(size_t i=1;i<pts.size();++i) L += (pts[i]-pts[i-1]).head<3>().norm(); return L;
 }
-
-// ---------- runners ----------
-static std::tuple<double,bool,double>
-run_converged(tsp::TaskSpacePlanner& plan, const Point& q0, const Point& qT, int max_iter){
-    const auto t0 = Clock::now();
-    bool ok = !plan.plan(q0,qT,false).empty();
-    for(int k=1;k<max_iter;++k) ok = ok || !plan.plan(q0,qT,true).empty();
-    const double ms = std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
-    return {ms, ok, ok? path_len_xyz(plan): 0.0};
+static std::vector<int> parse_csv_ints(std::string s){
+    std::vector<int> v; size_t i=0;
+    while(i<s.size()){
+        auto j=s.find(',',i);
+        auto t=(j==std::string::npos)? s.substr(i): s.substr(i,j-i);
+        if(!t.empty()) v.push_back(std::max(1,std::atoi(t.c_str())));
+        if(j==std::string::npos) break; i=j+1;
+    }
+    return v;
 }
 
+// ---------- runners ----------
+// k cumulative calls: 1× cold, (k-1)× warm; returns (time_ms, ok, path_len, iters_done)
+static std::tuple<double,bool,double,int>
+run_converged(tsp::TaskSpacePlanner& plan, const Point& q0, const Point& qT, int max_iter){
+    const auto t0 = Clock::now();
+    int iters = 0;
 
+    bool ok = !plan.plan(q0,qT,false).empty();
+    ++iters;
+
+    for(int k=1;k<max_iter;++k){
+        ok |= !plan.plan(q0,qT,true).empty();
+        ++iters;
+    }
+
+    const double ms = std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
+    return {ms, ok, ok? path_len_xyz(plan): 0.0, iters};
+}
+
+// Anytime: run until wall-clock budget; returns (used_ms, ok, best_len, iters_done)
+static std::tuple<double,bool,double,int>
+run_anytime(tsp::TaskSpacePlanner& plan, const Point& q0, const Point& qT, double budget_ms){
+    const auto t0 = Clock::now();
+    const auto deadline = t0 + std::chrono::duration<double,std::milli>(budget_ms);
+
+    int iters = 0;
+
+    bool ok = !plan.plan(q0,qT,false).empty();
+    ++iters;
+
+    double best = ok? path_len_xyz(plan): std::numeric_limits<double>::infinity();
+
+    while(Clock::now() < deadline){
+        const bool now_ok = !plan.plan(q0,qT,true).empty();
+        ++iters;
+        if(now_ok){
+            ok = true;
+            best = std::min(best, path_len_xyz(plan));
+        }
+    }
+
+    const double used = std::chrono::duration<double,std::milli>(Clock::now()-t0).count();
+    return {used, ok, ok? best: 0.0, iters};
+}
+
+// Trials that expect Runner to return (ms, ok, L, iters)
 template<class Runner, class Maker, class... Args>
-static std::tuple<Stats,int,double> trials(int N, bool warm, Runner run, Maker make, Args&&... args){
+static std::tuple<Stats,int,double,double> // Stats, succ_count, avg_length_over_successes, avg_iters_over_all_trials
+trials(int N, bool warm, Runner run, Maker make, Args&&... args){
     std::vector<double> times; times.reserve(N);
-    int succ=0; double sumL=0.0;
+    int succ=0; double sumL=0.0; long long sum_iters=0;
+
     if(warm){
         auto planner = make();
-        for(int i=0;i<N;++i){ auto [ms,ok,L] = run(planner, std::forward<Args>(args)...);
-            times.push_back(ms); if(ok){ ++succ; sumL += L; } }
+        for(int i=0;i<N;++i){
+            auto [ms,ok,L,iters] = run(planner, std::forward<Args>(args)...);
+            times.push_back(ms);
+            if(ok){ ++succ; sumL += L; }
+            sum_iters += iters;
+        }
     }else{
-        for(int i=0;i<N;++i){ auto planner = make();
-            auto [ms,ok,L] = run(planner, std::forward<Args>(args)...);
-            times.push_back(ms); if(ok){ ++succ; sumL += L; } }
+        for(int i=0;i<N;++i){
+            auto planner = make();
+            auto [ms,ok,L,iters] = run(planner, std::forward<Args>(args)...);
+            times.push_back(ms);
+            if(ok){ ++succ; sumL += L; }
+            sum_iters += iters;
+        }
     }
-    return {stats(times), succ, succ? (sumL/succ): 0.0};
+    const double avgL = succ? (sumL/double(succ)) : 0.0;
+    const double avgIters = double(sum_iters)/double(N);
+    return {stats(times), succ, avgL, avgIters};
 }
 
 // ---------- main ----------
@@ -75,6 +132,14 @@ int main(int argc, char** argv){
     std::string start_body          = (argc>=5 && argv[4][0]!='-')? argv[4] : "block_green/";
     std::string end_body            = (argc>=6 && argv[5][0]!='-')? argv[5] : "block_orange/";
     int         num_vias            = (argc>=7 && argv[6][0]!='-')? std::max(0,std::atoi(argv[6])): 1;
+    int max_iter = 60;
+    std::vector<int> budgets = {10, 20, 50};   // default budgets in ms
+
+    for(int i=7;i<argc;++i){
+        std::string a = argv[i];
+        if(a.rfind("--max_iter=",0)==0)         max_iter = std::max(1,std::atoi(a.substr(11).c_str()));
+        else if(a.rfind("--budgets_ms=",0)==0)  budgets = parse_csv_ints(a.substr(13));
+    }
 
     // mujoco
     char err[1024];
@@ -113,16 +178,45 @@ int main(int argc, char** argv){
     Point qT = Utility::get_body_point<Point>(m,d,end_body);
     q0[2]+=0.02; qT[2]+=0.02;
 
-    // --------- iteration benchmarks ---------
-    {
-        std::vector<int> iters = {1, 2, 5, 10};
-        std::cout << "\n=== Iteration Benchmark (N=" << N << ") ===\n";
-        for(int k : iters){
-            const auto [S, n, L] = trials(N, /*warm=*/false, run_converged, make_planner, q0, qT, k);
-            std::cout << "[iter=" << k << "] succ " << n << "/" << N
-                      << "  mean " << S.mean_ms << " ms  std " << S.std_ms
-                      << "  min " << S.min_ms << "  max " << S.max_ms;
-            if(n) std::cout << "  avg length " << L << " m"; std::cout << "\n";
+    // --------- converged benchmark ---------
+    // {
+    //     const auto [Sc, nc, Lc, Ic] = trials(N, /*warm=*/false, run_converged, make_planner, q0, qT, max_iter);
+    //     const auto [Sw, nw, Lw, Iw] = trials(N, /*warm=*/true,  run_converged, make_planner, q0, qT, max_iter);
+
+    //     std::cout << "\n=== Converged (max_iter=" << max_iter << ", N=" << N << ") ===\n";
+    //     std::cout << "[Cold]  succ " << nc << "/" << N
+    //               << "  mean " << Sc.mean_ms << " ms  std " << Sc.std_ms
+    //               << "  min " << Sc.min_ms << "  max " << Sc.max_ms
+    //               << "  avg iters " << Ic << "\n";
+    //     if(nc) std::cout << "        avg length " << Lc << " m\n";
+    //     std::cout << "[Warm]  succ " << nw << "/" << N
+    //               << "  mean " << Sw.mean_ms << " ms  std " << Sw.std_ms
+    //               << "  min " << Sw.min_ms << "  max " << Sw.max_ms
+    //               << "  avg iters " << Iw << "\n";
+    //     if(nw) std::cout << "        avg length " << Lw << " m\n";
+    // }
+
+    // --------- anytime benchmark (optional) ---------
+    if(!budgets.empty()){
+        std::cout << "\n=== Anytime (budgets ms: ";
+        for(size_t i=0;i<budgets.size();++i) std::cout << budgets[i] << (i+1<budgets.size()? ",":"");
+        std::cout << ", N="<<N<<") ===\n";
+
+        for(int B: budgets){
+            const auto [Sc, nc, Lc, Ic] = trials(N, /*warm=*/false, run_anytime, make_planner, q0, qT, double(B));
+            const auto [Sw, nw, Lw, Iw] = trials(N, /*warm=*/true,  run_anytime, make_planner, q0, qT, double(B));
+
+            std::cout << "[B="<<B<<"] Cold: succ " << nc << "/" << N
+                      << "  mean " << Sc.mean_ms << " ms  std " << Sc.std_ms
+                      << "  min " << Sc.min_ms << "  max " << Sc.max_ms
+                      << "  avg iters " << Ic;
+            if(nc) std::cout << "  avgL " << Lc << " m"; std::cout << "\n";
+
+            std::cout << "       Warm: succ " << nw << "/" << N
+                      << "  mean " << Sw.mean_ms << " ms  std " << Sw.std_ms
+                      << "  min " << Sw.min_ms << "  max " << Sw.max_ms
+                      << "  avg iters " << Iw;
+            if(nw) std::cout << "  avgL " << Lw << " m"; std::cout << "\n";
         }
     }
 
